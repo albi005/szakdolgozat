@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "docx": {
+        "type": "local",
+        "command": [
+          "uvx",
+          "--from",
+          "docx-mcp-server==0.7.4",
+          "--with",
+          "mcp<2",
+          "docx-mcp-server"
+        ]
+      }
+    }
+  }
+}

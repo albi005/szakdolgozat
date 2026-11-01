@@ -1,0 +1,7 @@
+.sync/
+review/
+*.pdf
+*.html
+__pycache__/
+.direnv/
+result
