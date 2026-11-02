@@ -11,7 +11,7 @@ StartSCH is built on the ASP.NET Core web framework developed by Microsoft for t
 
 === Blazor
 
-Blazor is 
+Blazor is
 
 == Client-side JavaScript and CSS
 
@@ -81,4 +81,4 @@ builder.Services
     );
 ```
 
-This setup instruments the whole app, including logs, metrics and traces.
+This setup instruments the whole app, including logs, metrics and traces. At run-time, the only configuration it needs is a `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable containing the URL of an OpenTelemetry Collector instance.
