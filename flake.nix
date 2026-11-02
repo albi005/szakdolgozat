@@ -19,6 +19,7 @@
         default = pkgs.mkShell {
           packages = with pkgs; [
             git
+            opencode
             pandoc
             python3
             rclone
