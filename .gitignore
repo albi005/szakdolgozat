@@ -5,3 +5,4 @@ review/
 __pycache__/
 .direnv/
 result
+.idea
