@@ -404,7 +404,8 @@ def main(argv: list[str]) -> int:
         print("gate: OK — the DOCX body matches thesis.typ")
         return 0
 
-    print(f"gate: FAIL — {len(problems)} difference(s)")
+    count = sum(1 for line in problems if line.startswith("- "))
+    print(f"gate: FAIL — {count} difference(s)")
     for line in problems:
         print(line)
     return 1

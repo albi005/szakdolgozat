@@ -8,7 +8,7 @@ require_target
 shared_exists || die "no shared document at $(remote_label). Run: make init"
 
 note "Downloading $(remote_label) ..."
-download_shared "$WORK"
+prepare_work
 extract_review
 
 read -r ins dels comments <<<"$(review_state "$WORK")"

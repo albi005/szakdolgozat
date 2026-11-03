@@ -80,6 +80,29 @@ review_state() {
   python3 "$ROOT/scripts/docx_state.py" "$1"
 }
 
+# Fetch the remote DOCX into the working copy. A working copy prepared from
+# the same remote revision is reused, so a retry after a failed finish step
+# does not throw the agent's edits away.
+prepare_work() {
+  download_shared "$ROOT/.sync/remote.docx"
+  local remote_sha
+  remote_sha="$(sha "$ROOT/.sync/remote.docx")"
+  if [[ -f "$WORK" && -f "$ROOT/.sync/work.base" ]] &&
+    [[ "$(cat "$ROOT/.sync/work.base")" == "$remote_sha" ]]; then
+    note "Reusing the prepared working copy (.sync/work.docx)."
+  else
+    mv "$ROOT/.sync/remote.docx" "$WORK"
+    printf '%s' "$remote_sha" >"$ROOT/.sync/work.base"
+  fi
+  printf '%s' "$remote_sha" >"$ROOT/.sync/last-seen.sha256"
+}
+
+# Mark the working copy as matching the remote revision we just uploaded.
+mark_uploaded() {
+  printf '%s' "$(sha "$WORK")" >"$ROOT/.sync/work.base"
+  printf '%s' "$(sha "$WORK")" >"$ROOT/.sync/last-seen.sha256"
+}
+
 # Regenerate the pandoc views of .sync/work.docx.
 extract_review() {
   pandoc "$WORK" --track-changes=accept -t markdown --wrap=none \

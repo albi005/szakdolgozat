@@ -32,7 +32,7 @@ git push
 tag_set "$WORK" "$head"
 note "Uploading ..."
 upload_shared "$WORK"
-sha "$WORK" > "$ROOT/.sync/last-seen.sha256"
+mark_uploaded
 date -Iseconds > "$ROOT/.sync/last-upload.txt"
 
 note

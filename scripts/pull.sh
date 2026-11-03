@@ -7,11 +7,10 @@ require_target
 shared_exists || die "no shared document at $(remote_label). Run: make init"
 
 note "Downloading $(remote_label) ..."
-download_shared "$WORK"
+prepare_work
 
 note "Extracting comments and tracked changes ..."
 extract_review
-sha "$WORK" > "$ROOT/.sync/last-seen.sha256"
 date -Iseconds > "$ROOT/.sync/last-pull.txt"
 
 read -r ins dels comments <<<"$(review_state "$WORK")"
