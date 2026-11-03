@@ -1,46 +1,54 @@
 #!/usr/bin/env bash
-# Show whether the shared DOCX has changed since the last pull.
+# status: read-only report of where the DOCX and thesis.typ stand.
 source "$(dirname "$0")/lib.sh"
 
-require_configured_target
+require_target
+shared_exists || die "no shared document at $(remote_label). Run: make init"
 
-echo "Target:      $REMOTE_DOCX"
+tmp="$ROOT/.sync/status.docx"
+download_shared "$tmp"
+read -r ins dels comments <<<"$(review_state "$tmp")"
+base="$(tag_get "$tmp")"
+head="$(git rev-parse --short HEAD)"
 
-if shared_exists; then
-  echo "Shared file: present"
-  download_shared "$ROOT/.sync/status.docx"
-  current="$(sha "$ROOT/.sync/status.docx")"
-  if [[ -f "$ROOT/.sync/last-pulled.sha256" ]]; then
-    if [[ "$current" == "$(cat "$ROOT/.sync/last-pulled.sha256")" ]]; then
-      echo "Review state: no new changes since last pull"
-    else
-      echo "Review state: new suggestions/comments available (run make pull)"
-    fi
+note "Target:      $(remote_label)"
+note "Marker:      ${base:-(none)}"
+note "HEAD:        $head"
+
+if [[ -f "$ROOT/.sync/last-seen.sha256" ]]; then
+  if [[ "$(sha "$tmp")" == "$(cat "$ROOT/.sync/last-seen.sha256")" ]]; then
+    note "Remote:      unchanged since the last download"
   else
-    echo "Review state: not pulled yet (run make pull)"
-  fi
-  rm -f "$ROOT/.sync/status.docx"
-else
-  echo "Shared file: MISSING"
-fi
-
-if [[ -f "$ROOT/.sync/last-pull.txt" ]]; then
-  echo "Last pull:   $(cat "$ROOT/.sync/last-pull.txt")"
-fi
-if [[ -f "$ROOT/.sync/last-upload.txt" ]]; then
-  echo "Last upload: $(cat "$ROOT/.sync/last-upload.txt")"
-fi
-
-if [[ -f "$ROOT/.sync/last-synced-thesis.typ" ]]; then
-  if cmp -s "$ROOT/.sync/last-synced-thesis.typ" "$ROOT/thesis.typ"; then
-    echo "Typst state: in sync with the last upload"
-  else
-    echo "Typst state: local changes not yet applied to the DOCX (run make diff)"
+    note "Remote:      CHANGED since the last download (run make pull)"
   fi
 else
-  echo "Typst state: no sync snapshot yet (run make adopt if the DOCX matches thesis.typ)"
+  note "Remote:      not seen on this machine yet"
 fi
 
-echo
-echo "Git status:"
+note "Review:      $ins insertion(s), $dels deletion(s), $comments comment(s)"
+
+if [[ "$ins" -ne 0 || "$dels" -ne 0 || "$comments" -ne 0 ]]; then
+  note "Next:        make pull  (supervisor suggestions are pending)"
+else
+  pandoc "$tmp" --track-changes=accept -t markdown --wrap=none \
+    -o "$ROOT/.sync/status-accepted.md"
+  if python3 "$ROOT/scripts/compare.py" thesis.typ \
+    "$ROOT/.sync/status-accepted.md" >"$ROOT/.sync/status-gate.txt"; then
+    note "Gate:        OK — the DOCX body matches thesis.typ"
+  else
+    note "Gate:        DIFFERS — $(head -1 "$ROOT/.sync/status-gate.txt")"
+    note "Next:        make push"
+  fi
+
+  if [[ -n "$base" ]]; then
+    count="$(git log --oneline "$base..$head" -- thesis.typ 2>/dev/null | wc -l)"
+    note "Commits:     $count touching thesis.typ since the marker"
+  else
+    note "Commits:     no marker, so 'make push' converges from the DOCX content"
+  fi
+fi
+
+rm -f "$tmp"
+note
+note "Git status:"
 git status --short
