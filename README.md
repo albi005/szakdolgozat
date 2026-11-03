@@ -65,6 +65,32 @@ git push        # push the Typst/scripts to GitHub
 
 `make upload` does not push to GitHub. `git push` does not touch OneDrive.
 
+## Switching machines
+
+The repository carries the publish target (`.env`), the scripts, the flake,
+and the `docx-mcp` config. These do not travel:
+
+- the rclone remote config (`~/.config/rclone/rclone.conf`)
+- `.sync/` — last-synced Typst snapshot, hashes, downloaded review DOCX
+- `review/` — extracted review material
+
+On another machine:
+
+```sh
+nix develop
+make rclone-config   # create/restore the same "onedrive" remote
+make pull            # download the current DOCX
+make adopt           # only if thesis.typ matches the current DOCX
+```
+
+`make adopt` declares “the current `thesis.typ` is the state of the shared
+DOCX”. It does not upload or modify anything. Use it after a fresh checkout
+of the commit that was last uploaded, or when you know the DOCX and Typst file
+are in sync.
+
+If the DOCX and `thesis.typ` are not in sync, skip `make adopt`, apply the
+difference to the DOCX, then `make upload`; that creates the snapshot.
+
 ## How the local diff is found
 
 Git commits are irrelevant for DOCX sync. The comparison uses a text snapshot

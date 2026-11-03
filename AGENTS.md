@@ -28,6 +28,11 @@ nix develop
 Do not upload while the DOCX is open in Word/Word Online. OneDrive returns
 `423 Locked`.
 
+On a new machine, the rclone config and `.sync/` state are missing. After
+`make pull`, run `make adopt` only if the shared DOCX is known to match the
+current `thesis.typ`. Otherwise apply the difference to the DOCX and use
+`make upload`, which creates the sync snapshot.
+
 ## A. Supervisor review → thesis.typ
 
 1. Check state:

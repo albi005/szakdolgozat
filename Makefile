@@ -1,10 +1,13 @@
-.PHONY: pull upload status diff pdf rclone-config
+.PHONY: pull upload adopt status diff pdf rclone-config
 
 pull:
 	bash scripts/pull.sh
 
 upload:
 	bash scripts/upload.sh
+
+adopt:
+	bash scripts/adopt.sh
 
 status:
 	bash scripts/status.sh

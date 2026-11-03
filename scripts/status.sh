@@ -38,7 +38,7 @@ if [[ -f "$ROOT/.sync/last-synced-thesis.typ" ]]; then
     echo "Typst state: local changes not yet applied to the DOCX (run make diff)"
   fi
 else
-  echo "Typst state: no sync snapshot yet"
+  echo "Typst state: no sync snapshot yet (run make adopt if the DOCX matches thesis.typ)"
 fi
 
 echo
