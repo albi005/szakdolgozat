@@ -150,15 +150,18 @@ commit, not a working tree.
 
 ## Commit messages
 
-Every commit the agent creates carries a trailer naming the assistant:
+Commits whose primary content the agent wrote — tooling, scripts, and docs
+describing that infrastructure — carry a trailer naming the assistant:
 
 ```
 Assisted-by: OpenCode:deepseek-flash
 ```
 
-Use `git commit --trailer "Assisted-by: OpenCode:deepseek-flash"` so the
-trailer is formatted correctly. `make pull-finish` adds it automatically for
-the commit it creates.
+Use `git commit --trailer "Assisted-by: OpenCode:deepseek-flash"`.
+
+Sync commits do **not** get the trailer. `make pull-finish` applies the
+supervisor's suggestions, so the content is not the agent's, and the commit it
+creates stays unlabelled.
 
 ## Rules
 
@@ -171,6 +174,7 @@ the commit it creates.
   stop and ask, because the DOCX no longer identifies an ancestor.
 - Keep `thesis.typ` free of title page, declarations, ToC, bibliography and
   appendix boilerplate; those live only in the DOCX.
-- Label commits created by the agent with
-  `Assisted-by: OpenCode:deepseek-flash`.
+- Label a commit with `Assisted-by: OpenCode:deepseek-flash` only when the agent
+  wrote its primary content — infrastructure, tooling, docs. Sync commits (the
+  supervisor's suggestions applied to `thesis.typ`) are not labelled.
 - `make pdf` builds `thesis.pdf`; it is unrelated to the DOCX.
