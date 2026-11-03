@@ -48,7 +48,39 @@ with docx-mcp, and upload:
 make upload
 ```
 
+`make upload` copies `.sync/review.docx` to OneDrive. It also stores the
+current `thesis.typ` as `.sync/last-synced-thesis.typ`, so future syncs know
+exactly what changed.
+
 See `AGENTS.md` for the full agent procedure.
+
+## Push
+
+There are two separate “push” operations:
+
+```sh
+make upload     # upload the edited DOCX to OneDrive
+git push        # push the Typst/scripts to GitHub
+```
+
+`make upload` does not push to GitHub. `git push` does not touch OneDrive.
+
+## How the local diff is found
+
+Git commits are irrelevant for DOCX sync. The comparison uses a text snapshot
+of `thesis.typ` from the last successful `make upload`:
+
+```text
+.sync/last-synced-thesis.typ
+```
+
+Show the local changes since that upload:
+
+```sh
+make diff
+```
+
+This works even if you have already committed your Typst changes.
 
 ## Commands
 
@@ -56,6 +88,7 @@ See `AGENTS.md` for the full agent procedure.
 make pull
 make upload
 make status
+make diff
 make pdf
 make rclone-config
 ```

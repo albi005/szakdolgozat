@@ -102,7 +102,15 @@ Do not push unless explicitly asked.
    ```
 
 3. Compare the current `thesis.typ` with the downloaded DOCX. Use
-   `review/accepted.md` and `git diff`.
+   `review/accepted.md` and:
+
+   ```sh
+   make diff
+   ```
+
+   `make diff` compares against `.sync/last-synced-thesis.typ`, the text
+   snapshot written by the last successful `make upload`. It works even if the
+   Typst changes are already committed to git.
 
 4. Apply only the changed blocks to `.sync/review.docx` with docx-mcp:
 
@@ -124,7 +132,8 @@ Do not push unless explicitly asked.
    make upload
    ```
 
-6. Commit `thesis.typ` if it is not already committed.
+6. Commit `thesis.typ` if it is not already committed. `make upload` handles
+   OneDrive; `git push` handles GitHub. They are independent.
 
 ## Rules
 

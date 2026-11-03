@@ -31,12 +31,14 @@ if [[ -f "$ROOT/.sync/last-upload.txt" ]]; then
   echo "Last upload: $(cat "$ROOT/.sync/last-upload.txt")"
 fi
 
-if [[ -f "$ROOT/.sync/last-synced-thesis.sha256" ]]; then
-  if [[ "$(sha "$ROOT/thesis.typ")" != "$(cat "$ROOT/.sync/last-synced-thesis.sha256")" ]]; then
-    echo "Typst state: local changes not yet applied to the DOCX"
-  else
+if [[ -f "$ROOT/.sync/last-synced-thesis.typ" ]]; then
+  if cmp -s "$ROOT/.sync/last-synced-thesis.typ" "$ROOT/thesis.typ"; then
     echo "Typst state: in sync with the last upload"
+  else
+    echo "Typst state: local changes not yet applied to the DOCX (run make diff)"
   fi
+else
+  echo "Typst state: no sync snapshot yet"
 fi
 
 echo

@@ -13,6 +13,7 @@ echo "Uploading the edited DOCX ..."
 upload_shared "$ROOT/.sync/review.docx"
 
 sha "$ROOT/.sync/review.docx" > "$ROOT/.sync/last-pulled.sha256"
+cp "$ROOT/thesis.typ" "$ROOT/.sync/last-synced-thesis.typ"
 sha "$ROOT/thesis.typ" > "$ROOT/.sync/last-synced-thesis.sha256"
 date -Iseconds > "$ROOT/.sync/last-upload.txt"
 
