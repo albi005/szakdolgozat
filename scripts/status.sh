@@ -43,6 +43,9 @@ else
   if [[ -n "$base" ]]; then
     count="$(git log --oneline "$base..$head" -- thesis.typ 2>/dev/null | wc -l)"
     note "Commits:     $count touching thesis.typ since the marker"
+    if [[ "$count" -eq 0 && "$base" != "$head" ]]; then
+      note "             (HEAD is ahead only in commits that do not touch thesis.typ)"
+    fi
   else
     note "Commits:     no marker, so 'make push' converges from the DOCX content"
   fi

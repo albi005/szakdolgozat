@@ -56,9 +56,12 @@ fi
 if python3 "$ROOT/scripts/compare.py" thesis.typ "$REVIEW/accepted.md" >/dev/null; then
   note
   note "The DOCX already matches thesis.typ — no content changes to apply."
-  if [[ -n "$base" && "$base" != "$head" ]]; then
+  if [[ -n "$base" && "$base" != "$head" ]] && [[ -n "$commits" ]]; then
     note "The marker is $base but HEAD is $head."
     note "Run 'make push-finish' to advance the marker and push git."
+  elif [[ -n "$base" && "$base" != "$head" ]]; then
+    note "The marker ($base) is behind HEAD ($head) only in commits that do"
+    note "not touch thesis.typ; nothing to sync."
   fi
   exit 0
 fi
