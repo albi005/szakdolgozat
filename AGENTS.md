@@ -159,10 +159,6 @@ Assisted-by: OpenCode:deepseek-flash
 
 Use `git commit --trailer "Assisted-by: OpenCode:deepseek-flash"`.
 
-Sync commits do **not** get the trailer. `make pull-finish` applies the
-supervisor's suggestions, so the content is not the agent's, and the commit it
-creates stays unlabelled.
-
 ## Rules
 
 - Never regenerate the DOCX from Typst, and never replace it wholesale.
