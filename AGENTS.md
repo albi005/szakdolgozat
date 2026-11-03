@@ -148,6 +148,18 @@ Then:
 `thesis.typ` must be committed before `push-finish`; the marker records a
 commit, not a working tree.
 
+## Commit messages
+
+Every commit the agent creates carries a trailer naming the assistant:
+
+```
+Assisted-by: OpenCode:deepseek-flash
+```
+
+Use `git commit --trailer "Assisted-by: OpenCode:deepseek-flash"` so the
+trailer is formatted correctly. `make pull-finish` adds it automatically for
+the commit it creates.
+
 ## Rules
 
 - Never regenerate the DOCX from Typst, and never replace it wholesale.
@@ -159,4 +171,6 @@ commit, not a working tree.
   stop and ask, because the DOCX no longer identifies an ancestor.
 - Keep `thesis.typ` free of title page, declarations, ToC, bibliography and
   appendix boilerplate; those live only in the DOCX.
+- Label commits created by the agent with
+  `Assisted-by: OpenCode:deepseek-flash`.
 - `make pdf` builds `thesis.pdf`; it is unrelated to the DOCX.

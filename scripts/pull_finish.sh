@@ -22,7 +22,9 @@ python3 "$ROOT/scripts/compare.py" thesis.typ "$REVIEW/accepted.md" || die \
 if [[ -n "$(git status --porcelain -- thesis.typ)" ]]; then
   note "Committing thesis.typ ..."
   git add thesis.typ
-  git commit -m "Apply supervisor review" --quiet -- thesis.typ
+  git commit -m "Apply supervisor review" \
+    --trailer "Assisted-by: OpenCode:deepseek-flash" \
+    --quiet -- thesis.typ
 else
   note "thesis.typ is unchanged; nothing to commit."
 fi
