@@ -5,7 +5,7 @@
 
 == Web Framework
 
-StartSCH is built on the ASP.NET Core web framework developed by Microsoft for the .NET framework.
+StartSCH is built on the ASP.NET Core web framework developed by Microsoft.
 
 === ASP.NET Core
 
@@ -82,3 +82,13 @@ builder.Services
 ```
 
 This setup instruments the whole app, including logs, metrics and traces. At run-time, the only configuration it needs is a `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable containing the URL of an OpenTelemetry Collector instance.
+
+OpenTelemetry requires a number of services to be running in our cluster. These services are responsible for storing the telemetry data and making it available for human consumption. I wanted a comprehensive setup, that can be reused by our other apps.
+
+There are all-in-one solutions for telemetry, for example SigNoz [link], but those didn't appear to be as widely used across the industry, as opposed to solutions comprised of multiple projects. The most commonly used tools I found for implementing an OpenTelemetry-compatible stack were the OpenTelemetry Collector Prometheus, Loki, Grafana, and Loki. These cover, in order: relaying this data to the storage backends, storing metrics, storing logs, and letting the user conveniently access the data. For storing traces, Jaeger [?] seemed like the most commonly used project, but I decided on using the trace storage backend developed by the makers of Grafana, Tempo, as it was easier to set up [?].
+
+While Kubernetes was designed to accomodate micro-services like these, it doesn't provide a way to reliably manage them out of the box. For this I decided on setting up a GitOps solution using Argo CD. Argo CD requires storing all of its configuration in a Git repository, and enforces it by overwriting any modifications to Kubernetes resources created by Argo CD.
+
+== The Problem
+
+As a university student, a common problem I face is keeping up with all the news around the university.
