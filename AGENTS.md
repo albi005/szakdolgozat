@@ -1,140 +1,176 @@
-# Agent instructions: DOCX review sync
+# Agent instructions: DOCX sync
 
-This repository contains the Typst source of the thesis. The shared Word
-document is the persistent review surface and lives in OneDrive.
+`thesis.typ` is the only content source of truth. The shared Word document in
+OneDrive is a derived review surface:
 
-- `thesis.typ` is the only content source of truth.
-- The shared DOCX must never be regenerated from Typst.
-- The supervisor uses **Track Changes / Suggesting** and comments only.
-- The supervisor’s comments must remain in the DOCX.
-- Formatting/title-page boilerplate is intentionally not in this repo.
+```
+DOCX body  ==  thesis.typ  +  boilerplate that lives only in the DOCX
+                            +  pending supervisor suggestions
+```
 
-Run tools inside the Nix dev shell:
+Nobody edits the DOCX by hand. The supervisor only adds Track Changes and
+comments; the author only edits `thesis.typ`.
+
+Run everything inside the Nix dev shell:
 
 ```sh
 nix develop
 ```
 
-## Environment
+## The three flows
 
-- OneDrive target: `.env` → `THESIS_REMOTE` + `THESIS_DOCX_NAME`
-- rclone remote: `onedrive`
-- Word editing: `docx-mcp` tools (configured in `opencode.json`)
-- Download/extract: `make pull`
-- Upload the edited review copy: `make upload`
-- Check state: `make status`
-- Build PDF: `make pdf`
+| Flow | Command | What it does |
+|---|---|---|
+| init | `make init` | rclone/OneDrive login, verify the document is reachable |
+| pull | `make pull` … `make pull-finish` | supervisor suggestions → `thesis.typ`, then accept them in the DOCX |
+| push | `make push` … `make push-finish` | `thesis.typ` changes → DOCX, plus `git push` |
 
-Do not upload while the DOCX is open in Word/Word Online. OneDrive returns
-`423 Locked`.
+`pull` and `push` each have two phases because the agent does the content work
+between them. Phase 1 writes the material into `review/`; phase 2 verifies and
+publishes.
 
-## A. Supervisor review → thesis.typ
+## State
 
-1. Check state:
+- `thesis.typ` — the only thing worth keeping.
+- `.sync/work.docx` — scratch copy; safe to delete at any time.
+- `.sync/work.base` — remote hash the scratch copy was made from. A retry of
+  phase 2 reuses the scratch copy instead of re-downloading.
+- `review/` — generated views; safe to delete at any time.
+- **The sync marker lives inside the DOCX**, in `docProps/custom.xml` as
+  `ThesisSyncBase`. It names the commit whose `thesis.typ` content the DOCX
+  body reflects. Markers are never stored on the side, so the claim and the
+  document cannot disagree.
 
-   ```sh
-   make status
+## The gate
+
+Before anything is uploaded, both phases run:
+
+```sh
+python3 scripts/compare.py thesis.typ review/accepted.md
+```
+
+It compares the DOCX body with `thesis.typ` word by word, ignoring markup,
+smart quotes, list numbering and the boilerplate sections listed in
+`DEFAULT_ALLOWLIST`. Any difference means **do not upload**. If the gate is too
+strict, fix the normalization rule or the allowlist in `scripts/compare.py` —
+never bypass the gate.
+
+## Flow: pull (supervisor → thesis.typ)
+
+```sh
+make pull
+```
+
+Downloads the DOCX and writes:
+
+- `review/comments.md` — comments (empty section if none)
+- `review/tracked.md` — tracked-change view
+- `review/accepted.md` — accepted-text view
+
+If there is nothing to review, `make pull` stops here and reports whether the
+DOCX already matches `thesis.typ`. Then:
+
+1. Read `review/comments.md` and `review/tracked.md`.
+2. Apply every suggestion and comment to `thesis.typ`. Keep existing wording
+   unless the suggestion explicitly changes it. Do not add boilerplate.
+3. Accept the tracked changes in the DOCX:
+
+   ```
+   open_document({ path: ".sync/work.docx" })
+   get_tracked_changes()
+   get_comments()          # must still list the supervisor's comments
+   accept_changes()
+   audit_document()
+   save_document({})       # writes back to .sync/work.docx
+   close_document()
    ```
 
-2. Download and extract:
+   Accepting must not remove comments. If a comment is anchored to a paragraph
+   that is being deleted, re-anchor it to the nearest surviving paragraph and
+   say so in the summary.
+
+4. Publish:
 
    ```sh
-   make pull
+   make pull-finish
    ```
 
-   This creates:
+   This gates, commits `thesis.typ`, stamps the marker, and uploads. It does
+   **not** push to GitHub.
 
-   - `.sync/review.docx` — the DOCX to edit and upload
-   - `review/comments.md` — comments + tracked insertions/deletions
-   - `review/tracked.md` — tracked-change view
-   - `review/accepted.md` — accepted-text view
+## Flow: push (thesis.typ → DOCX)
 
-3. Read `review/comments.md` and `review/tracked.md`.
+```sh
+make push
+```
 
-4. Apply the accepted suggestions to `thesis.typ`. Preserve the existing
-   content and wording unless the suggestion explicitly changes it. Do not
-   re-add boilerplate.
+Downloads the DOCX, reads its marker, and writes a worklist to
+`review/pending.md`:
 
-5. Accept the supervisor’s tracked changes in the DOCX with docx-mcp:
+- the commits touching `thesis.typ` since the marker,
+- the exact blocks the DOCX is missing.
 
-   - `open_document({ path: ".sync/review.docx" })`
-   - `get_tracked_changes()`
-   - `get_comments()` — verify comments are present
-   - `accept_changes()` or `accept_change({ change_id })` for each suggestion
-   - `audit_document()`
-   - `save_document({ path: ".sync/review.docx" })`
-   - `close_document()`
+`make push` refuses when the DOCX has unresolved tracked changes (run `pull`
+first), when the marker is not an ancestor of `HEAD` (history was rewritten),
+or when the marker is not a commit in this repository.
 
-   Accepting changes must not remove comments. If a comment is anchored to a
-   paragraph that would be deleted, do not delete the paragraph blindly:
-   re-anchor the comment to the nearest surviving paragraph first.
+Then:
 
-6. Upload the same DOCX:
+1. Read `review/pending.md`.
+2. Apply each difference to `.sync/work.docx` with docx-mcp, `tracked=False`:
+
+   ```
+   open_document({ path: ".sync/work.docx" })
+   search_text() / get_headings() / get_paragraph()
+   replace_text(..., tracked=False)
+   insert_paragraph() / delete_paragraph()
+   insert_code_block()
+   modify_cell() / add_table_row()
+   insert_image()
+   audit_document()
+   save_document({})
+   close_document()
+   ```
+
+   `audit_document()` reports a pre-existing inconsistent table in the
+   template's declaration page; that is not caused by a push.
+
+3. Publish:
 
    ```sh
-   make upload
+   make push-finish
    ```
 
-7. Commit the Typst changes:
+   Gates, then runs `git push`, then stamps the marker and uploads. Git goes
+   first on purpose: if the upload fails, the repository is consistent and the
+   next `push` recomputes the same worklist.
 
-   ```sh
-   git add thesis.typ
-   git commit -m "Apply supervisor review"
-   ```
+`thesis.typ` must be committed before `push-finish`; the marker records a
+commit, not a working tree.
 
-Do not push unless explicitly asked.
+## Commit messages
 
-## B. Local thesis.typ edits → DOCX
+Commits whose primary content the agent wrote — tooling, scripts, and docs
+describing that infrastructure — carry a trailer naming the assistant:
 
-1. Check whether local Typst changes are already in the DOCX:
+```
+Assisted-by: OpenCode:deepseek-flash
+```
 
-   ```sh
-   make status
-   ```
-
-   `Typst state: local changes not yet applied to the DOCX` means a sync is
-   needed.
-
-2. Download the current DOCX:
-
-   ```sh
-   make pull
-   ```
-
-3. Compare the current `thesis.typ` with the downloaded DOCX. Use
-   `review/accepted.md` and `git diff`.
-
-4. Apply only the changed blocks to `.sync/review.docx` with docx-mcp:
-
-   - `open_document({ path: ".sync/review.docx" })`
-   - `search_text()` / `get_headings()` / `get_paragraph()` to locate content
-   - `update_paragraph()` for replacements
-   - `insert_paragraph()` / `delete_paragraph()` for structural changes
-   - `modify_cell()` / `add_table_row()` for tables
-   - `insert_image()` for images
-   - use `tracked=False` for the author’s own edits so the document looks
-     directly edited
-   - `audit_document()`
-   - `save_document({ path: ".sync/review.docx" })`
-   - `close_document()`
-
-5. Upload:
-
-   ```sh
-   make upload
-   ```
-
-6. Commit `thesis.typ` if it is not already committed.
+Use `git commit --trailer "Assisted-by: OpenCode:deepseek-flash"`.
 
 ## Rules
 
-- Never rebuild the DOCX from Typst.
-- Never regenerate the DOCX and replace the OneDrive file.
-- Never delete `review/comments.md` before the comments have been addressed.
-- Keep comments in the DOCX; they are the supervisor’s review history.
-- If a comment’s anchored text is gone, attach the comment to the nearest
-  surviving paragraph and mention this in the final summary.
-- If `make upload` fails with `423 Locked`, stop and ask the user to close the
-  document in Word.
-- Keep `thesis.typ` free of title-page, declaration, and other boilerplate.
-- Commit locally; do not push to GitHub unless asked.
+- Never regenerate the DOCX from Typst, and never replace it wholesale.
+- Never delete or edit the supervisor's comments.
+- Never upload when the gate fails.
+- If `rclone` returns `423 Locked`, stop and ask the user to close the document
+  in Word.
+- Do not bypass the marker: after a rebase or `--amend` of a pushed commit,
+  stop and ask, because the DOCX no longer identifies an ancestor.
+- Keep `thesis.typ` free of title page, declarations, ToC, bibliography and
+  appendix boilerplate; those live only in the DOCX.
+- Label a commit with `Assisted-by: OpenCode:deepseek-flash` only when the agent
+  wrote its primary content — infrastructure, tooling, docs. Sync commits (the
+  supervisor's suggestions applied to `thesis.typ`) are not labelled.
+- `make pdf` builds `thesis.pdf`; it is unrelated to the DOCX.

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Shared helpers for the suggestions-only DOCX review loop.
+# Shared helpers for the thesis DOCX sync.
+#
+# Three flows: init (log in), pull (supervisor -> typst), push (typst -> DOCX).
+# The sync marker lives inside the DOCX itself, so "the DOCX contains commit X"
+# and "the DOCX says it contains commit X" are one write.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-for tool in pandoc typst python3 rclone; do
+for tool in git pandoc python3 rclone typst; do
   if ! command -v "$tool" >/dev/null 2>&1; then
-    echo "Missing '$tool'. Run the commands inside 'nix develop'."
+    echo "Missing '$tool'. Run the commands inside 'nix develop'." >&2
     exit 1
   fi
 done
@@ -26,19 +30,23 @@ else
   REMOTE_DOCX="${THESIS_REMOTE%/}/$THESIS_DOCX_NAME"
 fi
 
-mkdir -p "$ROOT/.sync"
+WORK="$ROOT/.sync/work.docx"
+REVIEW="$ROOT/review"
+mkdir -p "$ROOT/.sync" "$REVIEW"
 
-require_configured_target() {
+die() {
+  printf '\n\033[1;31merror:\033[0m %s\n' "$*" >&2
+  exit 1
+}
+
+note() {
+  printf '%s\n' "$*"
+}
+
+require_target() {
   local remote_name="${THESIS_REMOTE%%:*}"
   if ! rclone listremotes 2>/dev/null | grep -qx "$remote_name:"; then
-    echo "rclone remote '$remote_name' is not configured."
-    echo
-    echo "Set it up with:"
-    echo "  make rclone-config"
-    echo
-    echo "Then check it with:"
-    echo "  rclone lsd $remote_name:"
-    exit 1
+    die "rclone remote '$remote_name' is not configured. Run: make init"
   fi
 }
 
@@ -47,15 +55,66 @@ shared_exists() {
 }
 
 download_shared() {
-  local dest="$1"
-  rclone copyto "$REMOTE_DOCX" "$dest" >/dev/null
+  rclone copyto "$REMOTE_DOCX" "$1" >/dev/null
 }
 
 upload_shared() {
-  local src="$1"
-  rclone copyto "$src" "$REMOTE_DOCX" >/dev/null
+  rclone copyto "$1" "$REMOTE_DOCX" >/dev/null
 }
 
 sha() {
   sha256sum "$1" | cut -d' ' -f1
+}
+
+# Sync marker: the commit whose thesis.typ content the DOCX body reflects.
+tag_get() {
+  python3 "$ROOT/scripts/docx_tag.py" get "$1"
+}
+
+tag_set() {
+  python3 "$ROOT/scripts/docx_tag.py" set "$1" "$2"
+}
+
+# "insertions deletions comments" for a DOCX.
+review_state() {
+  python3 "$ROOT/scripts/docx_state.py" "$1"
+}
+
+# Fetch the remote DOCX into the working copy. A working copy prepared from
+# the same remote revision is reused, so a retry after a failed finish step
+# does not throw the agent's edits away.
+prepare_work() {
+  download_shared "$ROOT/.sync/remote.docx"
+  local remote_sha
+  remote_sha="$(sha "$ROOT/.sync/remote.docx")"
+  if [[ -f "$WORK" && -f "$ROOT/.sync/work.base" ]] &&
+    [[ "$(cat "$ROOT/.sync/work.base")" == "$remote_sha" ]]; then
+    note "Reusing the prepared working copy (.sync/work.docx)."
+  else
+    mv "$ROOT/.sync/remote.docx" "$WORK"
+    printf '%s' "$remote_sha" >"$ROOT/.sync/work.base"
+  fi
+  printf '%s' "$remote_sha" >"$ROOT/.sync/last-seen.sha256"
+}
+
+# Mark the working copy as matching the remote revision we just uploaded.
+mark_uploaded() {
+  printf '%s' "$(sha "$WORK")" >"$ROOT/.sync/work.base"
+  printf '%s' "$(sha "$WORK")" >"$ROOT/.sync/last-seen.sha256"
+}
+
+# Regenerate the pandoc views of .sync/work.docx.
+extract_review() {
+  pandoc "$WORK" --track-changes=accept -t markdown --wrap=none \
+    -o "$REVIEW/accepted.md"
+  pandoc "$WORK" --track-changes=all -t markdown --wrap=none \
+    -o "$REVIEW/tracked.md"
+  pandoc "$WORK" --track-changes=all -t json -o "$ROOT/.sync/review.json"
+  python3 "$ROOT/scripts/extract_review.py" \
+    "$ROOT/.sync/review.json" "$REVIEW/comments.md"
+}
+
+# The name of the remote file, for messages.
+remote_label() {
+  printf '%s' "$REMOTE_DOCX"
 }

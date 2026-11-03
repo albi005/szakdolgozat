@@ -1,40 +1,44 @@
 #!/usr/bin/env bash
-# Download the shared DOCX and extract suggestions/comments for manual review.
-# This does NOT modify thesis.typ or the DOCX.
+# pull, step 1: fetch the shared DOCX and extract the supervisor's review.
+# Step 2 (make pull-finish) runs after the agent applied the suggestions.
 source "$(dirname "$0")/lib.sh"
 
-require_configured_target
+require_target
+shared_exists || die "no shared document at $(remote_label). Run: make init"
 
-if ! shared_exists; then
-  echo "No shared Word document found at:"
-  echo "  $REMOTE_DOCX"
-  echo "Check THESIS_REMOTE / THESIS_DOCX_NAME in .env."
-  exit 1
-fi
+note "Downloading $(remote_label) ..."
+prepare_work
 
-mkdir -p "$ROOT/.sync" "$ROOT/review"
-
-echo "Downloading review copy ..."
-download_shared "$ROOT/.sync/review.docx"
-
-echo "Extracting suggestions and comments ..."
-pandoc "$ROOT/.sync/review.docx" --track-changes=accept \
-  -t markdown --wrap=none -o "$ROOT/review/accepted.md"
-pandoc "$ROOT/.sync/review.docx" --track-changes=all \
-  -t markdown --wrap=none -o "$ROOT/review/tracked.md"
-pandoc "$ROOT/.sync/review.docx" --track-changes=all \
-  -t json -o "$ROOT/.sync/review.json"
-python3 "$ROOT/scripts/extract_review.py" \
-  "$ROOT/.sync/review.json" "$ROOT/review/comments.md"
-
-sha "$ROOT/.sync/review.docx" > "$ROOT/.sync/last-pulled.sha256"
+note "Extracting comments and tracked changes ..."
+extract_review
 date -Iseconds > "$ROOT/.sync/last-pull.txt"
 
-echo
-echo "Review extracted to:"
-echo "  review/comments.md   comments + tracked changes"
-echo "  review/tracked.md    tracked-change view"
-echo "  review/accepted.md   accepted text view"
-echo
-echo "Next: apply the accepted suggestions to thesis.typ, accept them in the"
-echo "DOCX with docx-mcp, and upload the same DOCX."
+read -r ins dels comments <<<"$(review_state "$WORK")"
+base="$(tag_get "$WORK")"
+
+note
+note "Document marker: ${base:-(none)}"
+note "Tracked changes:  $ins insertion(s), $dels deletion(s)"
+note "Comments:         $comments"
+
+if [[ "$ins" -eq 0 && "$dels" -eq 0 && "$comments" -eq 0 ]]; then
+  note
+  note "Nothing to review."
+  note "The DOCX content compared against thesis.typ:"
+  note
+  python3 "$ROOT/scripts/compare.py" thesis.typ "$REVIEW/accepted.md" || true
+  note
+  note "If that lists differences, the DOCX is behind thesis.typ: run make push."
+  exit 0
+fi
+
+note
+note "Review material:"
+note "  review/comments.md   comments"
+note "  review/tracked.md    tracked-change view"
+note "  review/accepted.md   accepted-text view"
+note
+note "Next (agent):"
+note "  1. apply every suggestion and comment to thesis.typ"
+note "  2. accept the tracked changes in .sync/work.docx; keep all comments"
+note "  3. make pull-finish"

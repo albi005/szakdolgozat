@@ -1,6 +1,6 @@
 # Szakdolgozat
 
-Typst source for the thesis. `thesis.typ` is the content source of truth.
+Typst source of the thesis. `thesis.typ` is the content source of truth.
 
 The Word review copy is a persistent document in OneDrive:
 
@@ -9,64 +9,100 @@ onedrive:/Szakdolgozat - Ragány-Németh Albert GL6IFB.docx
 ```
 
 The supervisor reviews it with **Track Changes / Suggesting** and comments.
-The DOCX is never regenerated from Typst. Comments stay in the document.
+The DOCX is never generated from Typst and never edited by hand: its body is
+`thesis.typ` plus the boilerplate that only exists in Word plus whatever
+suggestions are still pending.
 
 ## Setup
 
 ```sh
 nix develop
+make init        # OneDrive login (browser) + reachability check
 ```
 
-If OneDrive is not configured yet:
+## The three flows
+
+| Flow | Command | Direction |
+|---|---|---|
+| init | `make init` | OneDrive login |
+| pull | `make pull` → agent → `make pull-finish` | supervisor suggestions → `thesis.typ` |
+| push | `make push` → agent → `make push-finish` | `thesis.typ` → DOCX + `git push` |
+| status | `make status` | read-only, downloads the DOCX |
+| pdf | `make pdf` | `typst compile` to `thesis.pdf` |
+
+`pull` and `push` are split in two because an agent (this one) does the content
+work in between. `make pull` prepares `review/`; `make pull-finish` verifies
+and publishes. Same for push, with `review/pending.md` as the worklist.
 
 ```sh
-make rclone-config
+make pull          # download + extract comments/tracked changes
+                   # ... apply to thesis.typ, accept changes in the DOCX ...
+make pull-finish   # gate, commit, stamp, upload
+
+make push          # download + worklist of missing blocks
+                   # ... apply them to the DOCX ...
+make push-finish   # gate, git push, stamp, upload
 ```
 
-Then check:
+## How sync state is tracked
+
+The DOCX carries its own marker: a custom document property `ThesisSyncBase`
+in `docProps/custom.xml`, holding the commit whose `thesis.typ` content the
+document body reflects. Because it is inside the file, "the DOCX was updated"
+and "the DOCX says it was updated" are a single write — OneDrive cannot split
+them, and there is no sidecar state to fall out of date.
+
+`make status` therefore reduces to arithmetic:
+
+```
+Marker:   80459d0
+HEAD:     80459d0
+Commits:  0 touching thesis.typ since the marker
+```
+
+There is no local sync baseline. `.sync/` and `review/` are caches; deleting
+them loses nothing.
+
+## The gate
+
+Nothing is uploaded unless the DOCX body and `thesis.typ` agree:
 
 ```sh
-make status
+python3 scripts/compare.py thesis.typ review/accepted.md
 ```
 
-## Review workflow
+The comparison is word-level and exact. It ignores markup, typography (smart
+quotes, dashes, `\~`), list numbering and the boilerplate sections it is told
+to ignore (title page, `Összefoglaló`, `Abstract`, `Irodalomjegyzék`,
+`Függelék`, declarations, ToC). A section present on only one side is a
+difference unless it matches the allowlist.
 
-```sh
-make pull
-```
+This is what replaces the old "mark as synced and hope" step: a forgotten
+paragraph blocks the upload instead of silently disappearing.
 
-Extracts the DOCX and writes review material to `review/`:
+## Failure modes
 
-- `comments.md` — comments and tracked changes
-- `tracked.md` — tracked-change view
-- `accepted.md` — accepted-text view
+| Symptom | Meaning |
+|---|---|
+| `423 Locked` | the DOCX is open in Word; close it and retry |
+| `marker is not a commit in this repository` | the DOCX was synced elsewhere |
+| `history was rewritten since <sha>` | rebase/amend after a push; re-anchor manually |
+| `pending insertion(s)` on `make push` | supervisor edits are unresolved; `make pull` first |
+| `thesis.typ has uncommitted changes` | commit before `push-finish` |
+| gate FAIL | the DOCX is missing or has extra blocks; see `review/pending.md` |
 
-Then apply suggestions to `thesis.typ`, accept them in `.sync/review.docx`
-with docx-mcp, and upload:
-
-```sh
-make upload
-```
-
-See `AGENTS.md` for the full agent procedure.
-
-## Commands
-
-```sh
-make pull
-make upload
-make status
-make pdf
-make rclone-config
-```
+`make push` and `make pull` reuse an already prepared `.sync/work.docx` when the
+remote has not changed, so a retry after a failed finish step keeps the agent's
+edits.
 
 ## Repo contents
 
 - `thesis.typ` — thesis content
-- `scripts/` — review sync helpers
-- `AGENTS.md` — instructions for the syncing agent
-- `opencode.json` — docx-mcp configuration
+- `scripts/` — sync tooling (`compare.py` gate, `docx_tag.py` marker)
+- `AGENTS.md` — the agent procedure for the three flows
+- `opencode.json` — `docx-mcp` configuration
 - `flake.nix` — pinned `nixpkgs-unstable` dev shell
 - `.env` — OneDrive target (not sensitive)
 
-The DOCX is deliberately not in git. Its history lives in OneDrive.
+The DOCX is deliberately not in git. Its history lives in OneDrive, and its
+sync marker lives inside it.
