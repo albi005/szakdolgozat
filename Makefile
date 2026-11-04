@@ -1,4 +1,4 @@
-.PHONY: init pull pull-finish push push-finish status pdf
+.PHONY: init pull pull-finish push push-finish reanchor status pdf
 
 # Log in to OneDrive and verify the review document is reachable.
 init:
@@ -19,6 +19,10 @@ push:
 
 push-finish:
 	bash scripts/push_finish.sh
+
+# Repoint the DOCX marker at HEAD after history was rewritten.
+reanchor:
+	bash scripts/reanchor.sh
 
 status:
 	bash scripts/status.sh

@@ -40,7 +40,13 @@ else
     note "Next:        make push"
   fi
 
-  if [[ -n "$base" ]]; then
+  if [[ -n "$base" ]] && ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+    note "Commits:     unknown — the marker ($base) is not in this repository"
+    note "             history was rewritten; run make reanchor"
+  elif [[ -n "$base" ]] && ! git merge-base --is-ancestor "$base" "$head" 2>/dev/null; then
+    note "Commits:     unknown — the marker ($base) is not an ancestor of HEAD"
+    note "             history was rewritten; run make reanchor"
+  elif [[ -n "$base" ]]; then
     count="$(git log --oneline "$base..$head" -- thesis.typ 2>/dev/null | wc -l)"
     note "Commits:     $count touching thesis.typ since the marker"
     if [[ "$count" -eq 0 && "$base" != "$head" ]]; then

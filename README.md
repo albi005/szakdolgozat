@@ -27,6 +27,7 @@ make init        # OneDrive login (browser) + reachability check
 | init | `make init` | OneDrive login |
 | pull | `make pull` → agent → `make pull-finish` | supervisor suggestions → `thesis.typ` |
 | push | `make push` → agent → `make push-finish` | `thesis.typ` → DOCX + `git push` |
+| reanchor | `make reanchor` | repoint the marker after history was rewritten |
 | status | `make status` | read-only, downloads the DOCX |
 | pdf | `make pdf` | `typst compile` to `thesis.pdf` |
 
@@ -86,7 +87,7 @@ paragraph blocks the upload instead of silently disappearing.
 |---|---|
 | `423 Locked` | the DOCX is open in Word; close it and retry |
 | `marker is not a commit in this repository` | the DOCX was synced elsewhere |
-| `history was rewritten since <sha>` | rebase/amend after a push; re-anchor manually |
+| `history was rewritten since <sha>` | run `make reanchor`; it gates before touching the marker |
 | `pending insertion(s)` on `make push` | supervisor edits are unresolved; `make pull` first |
 | `thesis.typ has uncommitted changes` | commit before `push-finish` |
 | gate FAIL | the DOCX is missing or has extra blocks; see `review/pending.md` |

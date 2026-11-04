@@ -24,11 +24,12 @@ commits=""
 if [[ -n "$base" ]]; then
   git cat-file -e "${base}^{commit}" 2>/dev/null ||
     die "the DOCX marker ($base) is not a commit in this repository.
-The DOCX was synced elsewhere, or this is a fresh clone of history that never
-contained $base. Inspect the DOCX, then re-anchor explicitly."
+History was rewritten, or the DOCX was synced elsewhere. If the content already
+matches, re-anchor the marker: make reanchor"
   git merge-base --is-ancestor "$base" HEAD ||
-    die "history was rewritten since $base (rebase/amend).
-The marker no longer identifies an ancestor of HEAD. Re-anchor explicitly."
+    die "history was rewritten since $base (rebase/amend/squash).
+The marker no longer identifies an ancestor of HEAD. If the content already
+matches, re-anchor the marker: make reanchor"
   commits="$(git log --oneline "$base..HEAD" -- thesis.typ)"
 else
   note "No sync marker in the DOCX: converging from its current content."

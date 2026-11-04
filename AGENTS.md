@@ -111,8 +111,16 @@ Downloads the DOCX, reads its marker, and writes a worklist to
 - the exact blocks the DOCX is missing.
 
 `make push` refuses when the DOCX has unresolved tracked changes (run `pull`
-first), when the marker is not an ancestor of `HEAD` (history was rewritten),
-or when the marker is not a commit in this repository.
+first), or when the marker no longer names an ancestor of `HEAD` (history was
+rewritten). In the second case the content is usually still in sync, and only
+the marker is stale:
+
+```sh
+make reanchor
+```
+
+`make reanchor` uploads nothing unless the gate passes, so it can never claim a
+match that does not exist. Never edit the marker by hand.
 
 Then:
 
@@ -166,8 +174,8 @@ Use `git commit --trailer "Assisted-by: OpenCode:deepseek-flash"`.
 - Never upload when the gate fails.
 - If `rclone` returns `423 Locked`, stop and ask the user to close the document
   in Word.
-- Do not bypass the marker: after a rebase or `--amend` of a pushed commit,
-  stop and ask, because the DOCX no longer identifies an ancestor.
+- Never edit the marker by hand. After a rebase, amend or squash, run
+  `make reanchor`; it only proceeds when the DOCX already matches `thesis.typ`.
 - Keep `thesis.typ` free of title page, declarations, ToC, bibliography and
   appendix boilerplate; those live only in the DOCX.
 - Label a commit with `Assisted-by: OpenCode:deepseek-flash` only when the agent
