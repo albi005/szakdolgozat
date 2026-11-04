@@ -55,6 +55,29 @@ smart quotes, list numbering and the boilerplate sections listed in
 strict, fix the normalization rule or the allowlist in `scripts/compare.py` —
 never bypass the gate.
 
+## Code blocks
+
+`thesis.typ` fences code with triple-backtick blocks tagged `cs`. Word has no
+code-block object, so a listing in the DOCX is **one paragraph per source
+line**, each line carrying the `Kód` paragraph style (styleId `Kd`: Consolas
+10 pt, 0.5 cm left indent, contextual spacing). Leading indentation is part of
+the line text and is kept with `xml:space="preserve"`. There is no shading, no
+border, no fence line and no blank line around the listing.
+
+Do **not** use docx-mcp's `insert_code_block()`: it writes the whole multi-line
+string into one `w:t`, and Word collapses the raw newlines, so the listing
+renders as a single long line. Insert one paragraph per line instead, pointing
+each at the previous line:
+
+```
+insert_paragraph({ after_para_id: <previous line>, text: "    .WithLogging()", style: "Kd" })
+```
+
+The gate reads the DOCX with `pandoc -f docx+styles`, and
+`scripts/docx_md.lua` merges a run of `Kód` paragraphs back into one fenced code
+block. Without that filter the lines look like ordinary paragraphs and
+`compare.py` reports them as differences.
+
 ## Flow: pull (supervisor → thesis.typ)
 
 ```sh
@@ -132,7 +155,7 @@ Then:
    search_text() / get_headings() / get_paragraph()
    replace_text(..., tracked=False)
    insert_paragraph() / delete_paragraph()
-   insert_code_block()
+   insert_paragraph(..., style: "Kd")   # one per code line, not insert_code_block()
    modify_cell() / add_table_row()
    insert_image()
    audit_document()

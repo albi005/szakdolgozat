@@ -76,7 +76,9 @@ The comparison is word-level and exact. It ignores markup, typography (smart
 quotes, dashes, `\~`), list numbering and the boilerplate sections it is told
 to ignore (title page, `Összefoglaló`, `Abstract`, `Irodalomjegyzék`,
 `Függelék`, declarations, ToC). A section present on only one side is a
-difference unless it matches the allowlist.
+difference unless it matches the allowlist. A Word code listing — one `Kód`
+paragraph per line — is merged back into a fenced block by
+`scripts/docx_md.lua` before comparing.
 
 This is what replaces the old "mark as synced and hope" step: a forgotten
 paragraph blocks the upload instead of silently disappearing.
@@ -99,7 +101,8 @@ edits.
 ## Repo contents
 
 - `thesis.typ` — thesis content
-- `scripts/` — sync tooling (`compare.py` gate, `docx_tag.py` marker)
+- `scripts/` — sync tooling (`compare.py` gate, `docx_tag.py` marker,
+  `docx_md.lua` pandoc filter for Word code listings)
 - `AGENTS.md` — the agent procedure for the three flows
 - `opencode.json` — `docx-mcp` configuration
 - `flake.nix` — pinned `nixpkgs-unstable` dev shell

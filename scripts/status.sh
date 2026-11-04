@@ -30,7 +30,8 @@ note "Review:      $ins insertion(s), $dels deletion(s), $comments comment(s)"
 if [[ "$ins" -ne 0 || "$dels" -ne 0 || "$comments" -ne 0 ]]; then
   note "Next:        make pull  (supervisor suggestions are pending)"
 else
-  pandoc "$tmp" --track-changes=accept -t markdown --wrap=none \
+  pandoc -f docx+styles --lua-filter="$ROOT/scripts/docx_md.lua" \
+    "$tmp" --track-changes=accept -t markdown --wrap=none \
     -o "$ROOT/.sync/status-accepted.md"
   if python3 "$ROOT/scripts/compare.py" thesis.typ \
     "$ROOT/.sync/status-accepted.md" >"$ROOT/.sync/status-gate.txt"; then

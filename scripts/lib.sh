@@ -104,10 +104,16 @@ mark_uploaded() {
 }
 
 # Regenerate the pandoc views of .sync/work.docx.
+#
+# +styles exposes the DOCX paragraph styles, and docx_md.lua merges the
+# Kód-styled paragraphs of a code listing into one fenced block, so the views
+# match the fenced blocks in thesis.typ.
 extract_review() {
-  pandoc "$WORK" --track-changes=accept -t markdown --wrap=none \
+  pandoc -f docx+styles --lua-filter="$ROOT/scripts/docx_md.lua" \
+    "$WORK" --track-changes=accept -t markdown --wrap=none \
     -o "$REVIEW/accepted.md"
-  pandoc "$WORK" --track-changes=all -t markdown --wrap=none \
+  pandoc -f docx+styles --lua-filter="$ROOT/scripts/docx_md.lua" \
+    "$WORK" --track-changes=all -t markdown --wrap=none \
     -o "$REVIEW/tracked.md"
   pandoc "$WORK" --track-changes=all -t json -o "$ROOT/.sync/review.json"
   python3 "$ROOT/scripts/extract_review.py" \
