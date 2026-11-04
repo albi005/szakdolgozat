@@ -1,5 +1,6 @@
-// Automatikus hír- és eseményaggregátor webalkalmazás fejlesztése
-// Actual thesis content only. Formatting/title-page boilerplate is separate.
+#import "@preview/merman:0.5.0": mermaid
+
+#set heading(numbering: "1.")
 
 = Development Environment
 
@@ -89,6 +90,40 @@ There are all-in-one solutions for telemetry, for example SigNoz [link], but tho
 
 While Kubernetes was designed to accomodate micro-services like these, it doesn't provide a way to reliably manage them out of the box. For this I decided on setting up a GitOps solution using Argo CD. Argo CD requires storing all of its configuration in a Git repository, and enforces it by overwriting any modifications to Kubernetes resources created by Argo CD.
 
-== The Problem
+= The Problem
 
 As a university student, a common problem I face is keeping up with all the news around the university.
+
+= The Model
+
+The core entity types of StartSCH are Events, Posts, Categories, Pages and Interests:
+
+#mermaid("
+classDiagram
+    class Page
+    class Category
+    class Event
+    class Post
+    class Interest
+
+    Page o--> Category
+    Category o--> Event
+    Category o--> Post
+    Category o--> Category
+    Event o--> Event
+    Event o--> Post
+    Interest --> Event
+    Interest --> Category
+")
+
+Events represent real-life events. Posts represent a piece of news, replacing emails. Pages represent organizations publishing content.
+
+Events can contain other Events. For example, the Schönherz Cup could be a top-level Event, its themed days could be second-level Events and everything else becomes a third-level Event. This way, Users only interested in a single day of the cup can follow only that single day and receive updates only for it.
+
+Posts can either be stand-alone or be attached to an Event. These attachments show up on the Post and can be used to promote a given Event or publish updates about it.
+
+Events and Posts (together referred to as _Articles_) are owned by Pages. Pages can organize Articles into Categories. All Categories have a single Page they belong to.
+
+Collaborations between Pages can be represented by assigning Categories from different Pages to a single Article.
+
+As Pages do not directly contain Articles, all Pages must contain an unnamed Category representing the Page itself. This Category is assigned to Articles that do not belong to any Category.
