@@ -110,6 +110,38 @@ def heading_title(raw: str) -> str:
 TYPST_HEADING = re.compile(r"^(=+)\s+(.*\S)\s*$")
 MD_HEADING = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
+# Typst calls that draw something. Word stores a drawing as an image, so both
+# surfaces contribute one `image` block; the picture itself is not compared.
+TYPST_FIGURE = re.compile(r"^#(mermaid|figure|image)\s*\(")
+# Top-level directives that configure the document instead of contributing text.
+TYPST_DIRECTIVE = re.compile(r"^#(import|include|set|show|let|bibliography)\b")
+MD_IMAGE = re.compile(r"^!\[[^\]]*\]\([^)]*\)(\{[^}]*\})?$")
+
+
+def typst_call_end(text: str, start: int) -> int:
+    """Return the index just past the balanced `(...)` of a call at `start`."""
+    i = text.index("(", start)
+    depth = 0
+    quote: str | None = None
+    while i < len(text):
+        ch = text[i]
+        if quote is not None:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(text)
+
 
 def parse_typst(text: str) -> list[Block]:
     blocks: list[Block] = []
@@ -124,42 +156,71 @@ def parse_typst(text: str) -> list[Block]:
             blocks.append(Block("para", joined))
         para = []
 
-    for line in text.splitlines():
+    offset = 0
+    length = len(text)
+    while offset < length:
+        newline = text.find("\n", offset)
+        next_offset = length if newline == -1 else newline + 1
+        line = text[offset:newline if newline != -1 else length]
+        stripped = line.strip()
+
         if code is not None:
-            if line.strip().startswith("```"):
+            if stripped.startswith("```"):
                 blocks.append(Block("code", normalize("\n".join(code))))
                 code = None
             else:
                 code.append(line)
+            offset = next_offset
             continue
 
         if in_block_comment:
             if "*/" in line:
                 in_block_comment = False
+            offset = next_offset
             continue
 
-        stripped = line.strip()
         if stripped.startswith("```"):
             flush()
             code = []
+            offset = next_offset
             continue
         if stripped.startswith("//"):
+            offset = next_offset
             continue
         if stripped.startswith("/*"):
             flush()
             in_block_comment = "*/" not in stripped
+            offset = next_offset
             continue
         if not stripped:
             flush()
+            offset = next_offset
             continue
 
         m = TYPST_HEADING.match(line)
         if m:
             flush()
             blocks.append(Block("heading", heading_title(m.group(2)), len(m.group(1))))
+            offset = next_offset
+            continue
+
+        if TYPST_DIRECTIVE.match(stripped):
+            flush()
+            offset = next_offset
+            continue
+
+        if TYPST_FIGURE.match(stripped):
+            # A diagram spans several lines (mermaid source included); consume
+            # the whole call so its body is not read as prose.
+            flush()
+            start = offset + len(line) - len(line.lstrip())
+            end = typst_call_end(text, start)
+            blocks.append(Block("image", ""))
+            offset = end
             continue
 
         para.append(stripped)
+        offset = next_offset
 
     if code is not None:
         blocks.append(Block("code", normalize("\n".join(code))))
@@ -175,9 +236,16 @@ def parse_markdown(text: str) -> list[Block]:
 
     def flush() -> None:
         nonlocal para
-        joined = normalize(" ".join(para))
-        if joined:
-            blocks.append(Block("para", joined))
+        raw = " ".join(para).strip()
+        if raw:
+            if MD_IMAGE.match(raw):
+                # A figure in the DOCX. Its content is a picture: compare its
+                # presence and position, not its pixels.
+                blocks.append(Block("image", ""))
+            else:
+                joined = normalize(raw)
+                if joined:
+                    blocks.append(Block("para", joined))
         para = []
 
     def flush_table() -> None:

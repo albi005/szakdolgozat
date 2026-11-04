@@ -78,6 +78,39 @@ The gate reads the DOCX with `pandoc -f docx+styles`, and
 block. Without that filter the lines look like ordinary paragraphs and
 `compare.py` reports them as differences.
 
+## Diagrams
+
+`thesis.typ` draws diagrams with `#mermaid("…")` (the `merman` package) or
+`#figure(...)`. Word has neither, so a diagram crosses the boundary as a
+picture: Typst renders it to SVG and the DOCX carries that SVG plus a PNG
+fallback in the same drawing. Word renders `asvg:svgBlip`; Pandoc and older
+Word versions read the PNG.
+
+Render a diagram by its order of appearance in `thesis.typ` (`--index 0` is the
+first `#mermaid`/`#figure`; reordering diagrams renumbers them):
+
+```sh
+nix develop -c python3 scripts/diagram.py render --index 0
+# .sync/fig/diagram-0.svg and .sync/fig/diagram-0.png
+```
+
+Insert it after the paragraph that introduces it, using the paraId from
+docx-mcp `search_text()`:
+
+```sh
+python3 scripts/diagram.py insert .sync/work.docx --after 6CED2BB8 \
+    --index 0 --alt "A StartSCH entitástípusainak osztálydiagramja"
+```
+
+`insert` must run **after** docx-mcp has saved and closed the document. It edits
+the package directly because docx-mcp's `insert_image()` writes a minimal
+`w:drawing` without `wp:docPr` or `pic:spPr`, which Word rejects. Give the
+picture an alt text in the language of the document; do not add a caption that
+`thesis.typ` does not have.
+
+The gate compares a diagram as one `image` block with no text: it must exist on
+both sides, in the same position, but the picture itself is not compared.
+
 ## Flow: pull (supervisor → thesis.typ)
 
 ```sh
@@ -157,7 +190,6 @@ Then:
    insert_paragraph() / delete_paragraph()
    insert_paragraph(..., style: "Kd")   # one per code line, not insert_code_block()
    modify_cell() / add_table_row()
-   insert_image()
    audit_document()
    save_document({})
    close_document()
@@ -165,6 +197,9 @@ Then:
 
    `audit_document()` reports a pre-existing inconsistent table in the
    template's declaration page; that is not caused by a push.
+
+   Diagrams are not inserted with docx-mcp. Render and insert them with
+   `scripts/diagram.py` (see [Diagrams](#diagrams)) after `close_document()`.
 
 3. Publish:
 

@@ -83,6 +83,11 @@ paragraph per line — is merged back into a fenced block by
 This is what replaces the old "mark as synced and hope" step: a forgotten
 paragraph blocks the upload instead of silently disappearing.
 
+A diagram is compared as one `image` block: it must be present on both sides in
+the same position, but the picture itself is not compared. `scripts/diagram.py`
+renders the `#mermaid`/`#figure` call to SVG with Typst and embeds it in the
+DOCX together with a PNG fallback (Word renders the SVG, older readers the PNG).
+
 ## Failure modes
 
 | Symptom | Meaning |
@@ -102,7 +107,8 @@ edits.
 
 - `thesis.typ` — thesis content
 - `scripts/` — sync tooling (`compare.py` gate, `docx_tag.py` marker,
-  `docx_md.lua` pandoc filter for Word code listings)
+  `docx_md.lua` pandoc filter for Word code listings, `diagram.py` renders
+  figures to SVG and embeds them in the DOCX)
 - `AGENTS.md` — the agent procedure for the three flows
 - `opencode.json` — `docx-mcp` configuration
 - `flake.nix` — pinned `nixpkgs-unstable` dev shell
