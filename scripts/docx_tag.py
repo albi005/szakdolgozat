@@ -10,12 +10,18 @@ Usage:
     docx_tag.py set FILE VALUE
 
 `get` prints the marker (empty string if absent). `set` rewrites the package in
-place, preserving every other part and every other custom property.
+place, preserving every other part.
+
+IMPORTANT: `[Content_Types].xml` and `_rels/.rels` are edited as text, never
+round-tripped through an XML library. ElementTree rewrites the default
+namespace as an `ns0:` prefix, and OPC readers that look elements up by
+qualified name then find nothing — Word Online reports the package as corrupt.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 import zipfile
@@ -31,10 +37,9 @@ CUSTOM_CT = "application/vnd.openxmlformats-officedocument.custom-properties+xml
 CUSTOM_REL = (
     "http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties"
 )
-CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
-REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 CP_NS = "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"
 VT_NS = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
+FMTID = "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}"
 
 ET.register_namespace("", CP_NS)
 ET.register_namespace("vt", VT_NS)
@@ -72,14 +77,25 @@ def write_parts(path: str, parts: dict[str, bytes]) -> None:
         raise
 
 
+def insert_before_close(text: str, local_name: str, fragment: str) -> str:
+    """Insert `fragment` just before the closing tag of `local_name`.
+
+    Works for both `<Types>` and `<ns0:Types>`, and leaves every other byte of
+    the part untouched.
+    """
+    match = re.search(rf"</(?:[A-Za-z_][\w.-]*:)?{local_name}\s*>", text)
+    if match is None:
+        raise ValueError(f"no closing {local_name} tag found")
+    return text[: match.start()] + fragment + text[match.start() :]
+
+
 def get_marker(path: str) -> str:
     with zipfile.ZipFile(path) as zf:
         try:
             raw = zf.read(CUSTOM_PART)
         except KeyError:
             return ""
-    root = ET.fromstring(raw)
-    for prop in root.findall(q(CP_NS, "property")):
+    for prop in ET.fromstring(raw).findall(q(CP_NS, "property")):
         if prop.get("name") != PROP_NAME:
             continue
         for child in prop:
@@ -87,10 +103,8 @@ def get_marker(path: str) -> str:
     return ""
 
 
-def set_marker(path: str, value: str) -> None:
-    parts = read_parts(path)
-
-    # 1. custom.xml — update or create our property, keep the others.
+def build_custom_xml(parts: dict[str, bytes], value: str) -> bytes:
+    """Return custom.xml with our property set and every other property kept."""
     if CUSTOM_PART in parts:
         root = ET.fromstring(parts[CUSTOM_PART])
         for prop in list(root.findall(q(CP_NS, "property"))):
@@ -99,47 +113,51 @@ def set_marker(path: str, value: str) -> None:
     else:
         root = ET.Element(q(CP_NS, "Properties"))
 
-    props = list(root.findall(q(CP_NS, "property")))
-    used_pids = {p.get("pid") for p in props}
+    used = {p.get("pid") for p in root.findall(q(CP_NS, "property"))}
     pid = 2
-    while str(pid) in used_pids:
+    while str(pid) in used:
         pid += 1
 
     prop = ET.SubElement(root, q(CP_NS, "property"))
-    prop.set("fmtid", "{D5CDD505-2E9C-101B-9397-08002B2CF9AE}")
+    prop.set("fmtid", FMTID)
     prop.set("pid", str(pid))
     prop.set("name", PROP_NAME)
     ET.SubElement(prop, q(VT_NS, "lpwstr")).text = value
 
-    parts[CUSTOM_PART] = ET.tostring(root, encoding="UTF-8", xml_declaration=True)
+    body = ET.tostring(root, encoding="unicode")
+    # Word writes a standalone declaration; match it.
+    return (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' + body
+    ).encode("utf-8")
 
-    # 2. [Content_Types].xml — register the part.
-    ct = ET.fromstring(parts[CT_PART])
-    target = "/" + CUSTOM_PART
-    if not any(
-        el.get("PartName") == target for el in ct.findall(q(CT_NS, "Override"))
-    ):
-        override = ET.SubElement(ct, q(CT_NS, "Override"))
-        override.set("PartName", target)
-        override.set("ContentType", CUSTOM_CT)
-    parts[CT_PART] = ET.tostring(ct, encoding="UTF-8", xml_declaration=True)
 
-    # 3. _rels/.rels — point at the part.
-    rels = ET.fromstring(parts[REL_PART])
-    if not any(
-        el.get("Type") == CUSTOM_REL
-        for el in rels.findall(q(REL_NS, "Relationship"))
-    ):
-        ids = {el.get("Id") for el in rels.findall(q(REL_NS, "Relationship"))}
+def set_marker(path: str, value: str) -> None:
+    parts = read_parts(path)
+
+    parts[CUSTOM_PART] = build_custom_xml(parts, value)
+
+    ct = parts[CT_PART].decode("utf-8")
+    if 'PartName="/docProps/custom.xml"' not in ct:
+        ct = insert_before_close(
+            ct,
+            "Types",
+            f'<Override PartName="/{CUSTOM_PART}" ContentType="{CUSTOM_CT}"/>',
+        )
+        parts[CT_PART] = ct.encode("utf-8")
+
+    rels = parts[REL_PART].decode("utf-8")
+    if 'Target="docProps/custom.xml"' not in rels:
+        ids = set(re.findall(r'Id="([^"]+)"', rels))
         rid, n = "rIdSyncBase", 1
         while rid in ids:
             n += 1
             rid = f"rIdSyncBase{n}"
-        rel = ET.SubElement(rels, q(REL_NS, "Relationship"))
-        rel.set("Id", rid)
-        rel.set("Type", CUSTOM_REL)
-        rel.set("Target", CUSTOM_PART)
-    parts[REL_PART] = ET.tostring(rels, encoding="UTF-8", xml_declaration=True)
+        rels = insert_before_close(
+            rels,
+            "Relationships",
+            f'<Relationship Id="{rid}" Type="{CUSTOM_REL}" Target="{CUSTOM_PART}"/>',
+        )
+        parts[REL_PART] = rels.encode("utf-8")
 
     write_parts(path, parts)
 

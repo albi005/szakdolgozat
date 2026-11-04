@@ -23,13 +23,16 @@ if [[ -n "$(git status --porcelain -- thesis.typ)" ]]; then
 fi
 
 old="$(tag_get "$WORK")"
-head="$(git rev-parse --short HEAD)"
+rev="${REV:-HEAD}"
+git rev-parse --verify --quiet "$rev^{commit}" >/dev/null ||
+  die "'$rev' is not a commit in this repository."
+head="$(git rev-parse --short "$rev")"
 
 note "Old marker: ${old:-(none)}"
 note "New marker: $head"
 
-if [[ "$old" == "$head" ]]; then
-  note "Already anchored."
+if [[ "$old" == "$head" && "${FORCE:-0}" != 1 ]]; then
+  note "Already anchored. (FORCE=1 re-uploads the working copy anyway.)"
   exit 0
 fi
 
