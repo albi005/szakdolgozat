@@ -85,8 +85,9 @@ paragraph blocks the upload instead of silently disappearing.
 
 A diagram is compared as one `image` block: it must be present on both sides in
 the same position, but the picture itself is not compared. `scripts/diagram.py`
-renders the `#mermaid`/`#figure` call to SVG with Typst and embeds it in the
-DOCX together with a PNG fallback (Word renders the SVG, older readers the PNG).
+renders the `#mermaid`/`#figure` call to a PNG with Typst and embeds it in the
+DOCX. (Not SVG: Word drops the SVG Typst emits, which nests the mermaid render
+as a base64 data URI — typst/typst#7040.)
 
 ## Failure modes
 

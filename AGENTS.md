@@ -82,16 +82,20 @@ block. Without that filter the lines look like ordinary paragraphs and
 
 `thesis.typ` draws diagrams with `#mermaid("…")` (the `merman` package) or
 `#figure(...)`. Word has neither, so a diagram crosses the boundary as a
-picture: Typst renders it to SVG and the DOCX carries that SVG plus a PNG
-fallback in the same drawing. Word renders `asvg:svgBlip`; Pandoc and older
-Word versions read the PNG.
+picture: Typst renders it to PNG, and the DOCX embeds that PNG as an ordinary
+picture.
+
+Do not use SVG here. Word only renders SVG through the `asvg:svgBlip`
+extension, and it throws away the SVG Typst produces because the mermaid render
+is nested inside it as a base64 data URI (typst/typst#7040). A flattened SVG
+was also tested; Word lost it on reopen. PNG always works.
 
 Render a diagram by its order of appearance in `thesis.typ` (`--index 0` is the
 first `#mermaid`/`#figure`; reordering diagrams renumbers them):
 
 ```sh
 nix develop -c python3 scripts/diagram.py render --index 0
-# .sync/fig/diagram-0.svg and .sync/fig/diagram-0.png
+# .sync/fig/diagram-0.png
 ```
 
 Insert it after the paragraph that introduces it, using the paraId from
@@ -104,9 +108,10 @@ python3 scripts/diagram.py insert .sync/work.docx --after 6CED2BB8 \
 
 `insert` must run **after** docx-mcp has saved and closed the document. It edits
 the package directly because docx-mcp's `insert_image()` writes a minimal
-`w:drawing` without `wp:docPr` or `pic:spPr`, which Word rejects. Give the
-picture an alt text in the language of the document; do not add a caption that
-`thesis.typ` does not have.
+`w:drawing` without `wp:docPr` or `pic:spPr`. Give the picture an alt text in
+the language of the document; do not add a caption that `thesis.typ` does not
+have. Re-inserting a picture cleans up the media and relationships the old one
+left behind.
 
 The gate compares a diagram as one `image` block with no text: it must exist on
 both sides, in the same position, but the picture itself is not compared.

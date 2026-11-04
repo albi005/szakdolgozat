@@ -2,20 +2,24 @@
 """Render the diagrams of `thesis.typ` and embed them in the review DOCX.
 
 Word cannot draw Typst figures or mermaid diagrams, so a diagram crosses the
-sync boundary as a picture. Typst renders it to SVG; the DOCX gets that SVG
-plus a PNG fallback in the same drawing (Word renders `asvg:svgBlip`, older
-readers fall back to the PNG).
+sync boundary as a picture. Typst renders it to a PNG; the DOCX embeds that
+PNG as an ordinary picture.
+
+SVG was tried first and does not work: Word only renders SVG through the
+`asvg:svgBlip` extension, and it rejects the SVG that Typst produces because
+the mermaid render is nested inside it as a base64 data URI
+(typst/typst#7040). A flattened SVG was tested too; Word still did not keep it
+across a reopen. A PNG always works.
 
     diagram.py render --index 0
-        .sync/fig/diagram-0.svg, .sync/fig/diagram-0.png
+        .sync/fig/diagram-0.png
 
     diagram.py insert .sync/work.docx --after 0DE69351 --index 0
-        Inserts the picture after that paragraph with the SVG + PNG pair.
+        Inserts the picture after that paragraph.
 
 `insert` edits the package directly: docx-mcp's `insert_image` writes a minimal
-`w:drawing` without the parts Word requires (`wp:docPr`, `pic:spPr`), so the
-SVG has to be added here anyway. Run it after docx-mcp has saved and closed
-the document.
+`w:drawing` without the parts Word requires (`wp:docPr`, `pic:spPr`). Run it
+after docx-mcp has saved and closed the document.
 
 Diagrams are numbered by their order of appearance in `thesis.typ`, so
 `--index` is stable as long as diagrams are not reordered.
@@ -39,11 +43,12 @@ DEFAULT_IMPORT = '#import "@preview/merman:0.5.0": mermaid'
 
 EMU_PER_PT = 12700
 EMU_PER_CM = 360000
+# Render resolution. The picture is scaled to `--max-width`/`--max-height`
+# below, so this is the ceiling, not the printed resolution.
+PNG_PPI = 450
 
-SVG_EXT_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
 NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 NS_PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture"
-NS_ASVG = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
 
 # Top-level Typst calls that draw something. They may span several lines and
 # contain blank lines (mermaid source), so they are scanned as one block.
@@ -109,7 +114,7 @@ def mermaid_import(source: str) -> str:
 # render
 # --------------------------------------------------------------------------
 
-def render(index: int, outdir: Path) -> tuple[Path, Path]:
+def render(index: int, outdir: Path) -> Path:
     source = THESIS.read_text(encoding="utf8")
     calls = figure_calls(source)
     if not calls:
@@ -121,7 +126,6 @@ def render(index: int, outdir: Path) -> tuple[Path, Path]:
 
     outdir.mkdir(parents=True, exist_ok=True)
     typ = outdir / f"diagram-{index}.typ"
-    svg = outdir / f"diagram-{index}.svg"
     png = outdir / f"diagram-{index}.png"
 
     typ.write_text(
@@ -131,18 +135,19 @@ def render(index: int, outdir: Path) -> tuple[Path, Path]:
         encoding="utf8",
     )
 
-    for args in (
-        ["compile", "--format", "svg", str(typ), str(svg)],
-        ["compile", "--format", "png", "--ppi", "300", str(typ), str(png)],
-    ):
-        try:
-            subprocess.run(["typst", *args], check=True, cwd=ROOT)
-        except FileNotFoundError as exc:  # pragma: no cover - env error
-            raise DiagramError("typst not found; run inside nix develop") from exc
-        except subprocess.CalledProcessError as exc:
-            raise DiagramError(f"typst failed for diagram {index}") from exc
+    try:
+        subprocess.run(
+            ["typst", "compile", "--format", "png", "--ppi", str(PNG_PPI),
+             str(typ), str(png)],
+            check=True,
+            cwd=ROOT,
+        )
+    except FileNotFoundError as exc:  # pragma: no cover - env error
+        raise DiagramError("typst not found; run inside nix develop") from exc
+    except subprocess.CalledProcessError as exc:
+        raise DiagramError(f"typst failed for diagram {index}") from exc
 
-    return svg, png
+    return png
 
 
 # --------------------------------------------------------------------------
@@ -187,7 +192,6 @@ def _drawing_paragraph(
     cy: int,
     doc_pr_id: int,
     png_rid: str,
-    svg_rid: str,
     name: str,
     alt: str,
 ) -> str:
@@ -211,10 +215,7 @@ def _drawing_paragraph(
         '<pic:cNvPicPr><a:picLocks noChangeAspect="1" noChangeArrowheads="1"/>'
         "</pic:cNvPicPr></pic:nvPicPr>"
         "<pic:blipFill>"
-        f'<a:blip r:embed="{png_rid}"><a:extLst>'
-        f'<a:ext uri="{SVG_EXT_URI}">'
-        f'<asvg:svgBlip xmlns:asvg="{NS_ASVG}" r:embed="{svg_rid}"/>'
-        "</a:ext></a:extLst></a:blip>"
+        f'<a:blip r:embed="{png_rid}"/>'
         "<a:srcRect/><a:stretch><a:fillRect/></a:stretch>"
         "</pic:blipFill>"
         "<pic:spPr>"
@@ -241,6 +242,48 @@ def _save(zip_path: Path, entries: dict[str, bytes]) -> None:
     shutil.move(tmp, zip_path)
 
 
+def _png_size(png: Path) -> tuple[float, float]:
+    """Return the picture size in Typst points (the page it was rendered on)."""
+    data = png.read_bytes()
+    if data[:8] != b"\x89PNG\r\n\x1a\n":
+        raise DiagramError(f"{png} is not a PNG")
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    return width / PNG_PPI * 72, height / PNG_PPI * 72
+
+
+def _drop_unused_media(
+    document: str, rels: str, entries: dict[str, bytes]
+) -> str:
+    """Remove image relationships and media that no drawing refers to.
+
+    Keeps the package clean when a diagram paragraph is deleted before being
+    re-inserted.
+    """
+    used = set(re.findall(r'<a:blip[^>]*r:embed="(rId\d+)"', document))
+
+    def repl(match: re.Match[str]) -> str:
+        tag = match.group(0)
+        target = re.search(r'Target="media/([^"]+)"', tag)
+        # Only image relationships may be dropped; styles, numbering,
+        # footnotes and the rest are not ours to touch.
+        if target is None:
+            return tag
+        rid = re.search(r'\bId="(rId\d+)"', tag)
+        if rid and rid.group(1) not in used:
+            entries.pop(f"word/media/{target.group(1)}", None)
+            return ""
+        return tag
+
+    rels = re.sub(r"<Relationship\b[^>]*/>", repl, rels)
+
+    referenced = set(re.findall(r'Target="media/([^"]+)"', rels))
+    for name in list(entries):
+        if name.startswith("word/media/") and name.rsplit("/", 1)[-1] not in referenced:
+            del entries[name]
+    return rels
+
+
 def insert(
     docx: Path,
     *,
@@ -251,14 +294,17 @@ def insert(
     max_width_cm: float,
     max_height_cm: float,
 ) -> dict:
-    svg, png = render(index, CACHE)
+    png = render(index, CACHE)
 
     with zipfile.ZipFile(docx) as zf:
         entries = {name: zf.read(name) for name in zf.namelist()}
 
     document = entries["word/document.xml"].decode("utf8")
     rels = entries["word/_rels/document.xml.rels"].decode("utf8")
-    types = entries["[Content_Types].xml"].decode("utf8")
+
+    # Pictures removed in an earlier step (or by docx-mcp) leave their media
+    # and relationships behind; drop them before numbering the new picture.
+    rels = _drop_unused_media(document, rels, entries)
 
     if after:
         marker = f'w14:paraId="{after.upper()}"'
@@ -283,7 +329,7 @@ def insert(
 
     end = _paragraph_end(document, start)
 
-    width_pt, height_pt = _svg_size(svg)
+    width_pt, height_pt = _png_size(png)
     scale = min(
         max_width_cm * EMU_PER_CM / (width_pt * EMU_PER_PT),
         max_height_cm * EMU_PER_CM / (height_pt * EMU_PER_PT),
@@ -292,28 +338,24 @@ def insert(
     cy = round(height_pt * EMU_PER_PT * scale)
 
     next_image = _next_image_number(list(entries))
-    svg_name = f"image{next_image}.svg"
     png_name = f"image{next_image}.png"
-    entries[f"word/media/{svg_name}"] = svg.read_bytes()
     entries[f"word/media/{png_name}"] = png.read_bytes()
 
-    png_rid, svg_rid_num = _next_rid(rels)
-    svg_rid = f"rId{svg_rid_num}"
+    png_rid, _ = _next_rid(rels)
     rel_type = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
     rels = rels.replace(
         "</Relationships>",
         f'<Relationship Id="{png_rid}" Type="{rel_type}" Target="media/{png_name}"/>'
-        f'<Relationship Id="{svg_rid}" Type="{rel_type}" Target="media/{svg_name}"/>'
         "</Relationships>",
     )
     entries["word/_rels/document.xml.rels"] = rels.encode("utf8")
 
-    if not re.search(r'<Default[^>]*Extension="svg"', types):
-        types = types.replace(
-            "</Types>",
-            '<Default Extension="svg" ContentType="image/svg+xml"/></Types>',
-        )
-        entries["[Content_Types].xml"] = types.encode("utf8")
+    # A document that once carried an SVG keeps its content-type default.
+    types = entries["[Content_Types].xml"].decode("utf8")
+    if not any(name.endswith(".svg") for name in entries):
+        cleaned = re.sub(r'<Default Extension="svg"[^>]*/>', "", types)
+        if cleaned != types:
+            entries["[Content_Types].xml"] = cleaned.encode("utf8")
 
     doc_pr_ids = [int(n) for n in re.findall(r'<wp:docPr id="(\d+)"', document)]
     doc_pr_id = max(doc_pr_ids, default=0) + 1
@@ -325,7 +367,6 @@ def insert(
         cy=cy,
         doc_pr_id=doc_pr_id,
         png_rid=png_rid,
-        svg_rid=svg_rid,
         name=f"Ábra {index + 1}",
         alt=alt,
     )
@@ -335,20 +376,10 @@ def insert(
     _save(docx, entries)
     return {
         "para_id": para_id,
-        "svg": f"word/media/{svg_name}",
         "png": f"word/media/{png_name}",
         "width_cm": round(cx / EMU_PER_CM, 2),
         "height_cm": round(cy / EMU_PER_CM, 2),
     }
-
-
-def _svg_size(svg: Path) -> tuple[float, float]:
-    head = svg.read_text(encoding="utf8")[:2000]
-    width = re.search(r'\bwidth="([\d.]+)pt"', head)
-    height = re.search(r'\bheight="([\d.]+)pt"', head)
-    if not width or not height:
-        raise DiagramError(f"cannot read the size of {svg}")
-    return float(width.group(1)), float(height.group(1))
 
 
 # --------------------------------------------------------------------------
@@ -359,7 +390,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
-    p_render = sub.add_parser("render", help="render a diagram to SVG and PNG")
+    p_render = sub.add_parser("render", help="render a diagram to PNG")
     p_render.add_argument("--index", type=int, default=0)
     p_render.add_argument("--outdir", type=Path, default=CACHE)
 
@@ -376,8 +407,7 @@ def main(argv: list[str]) -> int:
 
     try:
         if args.command == "render":
-            svg, png = render(args.index, args.outdir)
-            print(f"{svg}\n{png}")
+            print(render(args.index, args.outdir))
         else:
             result = insert(
                 args.docx,
