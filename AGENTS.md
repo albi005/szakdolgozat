@@ -230,6 +230,13 @@ Assisted-by: OpenCode:deepseek-flash
 
 Use `git commit --trailer "Assisted-by: OpenCode:deepseek-flash"`.
 
+## Agent notes
+
+`AGENT_NOTES.md` collects practical findings from earlier syncs: docx-mcp quirks,
+gate normalization pitfalls, code-listing and diagram insertion details. Read it
+before starting a sync, and append anything new you had to work out so the next
+sync does not rediscover it.
+
 ## Rules
 
 - Never regenerate the DOCX from Typst, and never replace it wholesale.

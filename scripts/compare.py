@@ -84,6 +84,12 @@ def normalize(text: str) -> str:
     """
     text = unicodedata.normalize("NFC", text).translate(_TRANSLATE)
     text = re.sub(r"\\([^\w\s])", r"\1", text)
+    # Inline raw code with a language tag: ```cs foo()``` -> foo(). Typst keeps
+    # the backticks in the source but renders only the code, so the delimiters
+    # and the language are markup, not words. Must run before the single-tick
+    # rule below, which would otherwise strip the ticks one pair at a time.
+    text = re.sub(r"```[A-Za-z0-9_+.-]*[ \t]+([^`\n]*?)```", r"\1", text)
+    text = re.sub(r"```([^`\n]*?)```", r"\1", text)  # inline raw, no language
     text = re.sub(r"```[^\n]*", "", text)  # stray fence info strings
     text = re.sub(r"`([^`]*)`", r"\1", text)  # inline code
     text = re.sub(r"\*\*|__", "", text)  # strong
