@@ -22,7 +22,7 @@ StartSCH requires small client-side interactions, that Blazor cannot accomplish.
 
 An alternative provided by Blazor is its server-side interactive render-mode, where it uses SignalR to send all user-initiated events to the server, where these events get processed, after which the server sends back updates to the DOM. Server mode causes a small delay between user interactions and results showing up in the UI. This delay is significantly amplified in the conditions detailed above, making server-rendering not an option.
 
-Taking inspiration from more classic websites, StartSCH uses JavaScript for client-side interactions on its commonly used pages.
+Taking inspiration from more classic websites, StartSCH uses JavaScript (JS) for client-side interactions on its commonly used pages.
 
 While JavaScript has seen significant investments in capabilities in recent years, one area it falls behind out of the box is type-safety. Nowadays the industry standard for adding type-safety to JS is the TypeScript (TS) language developed by Microsoft. TS is a superset of JS, adding a type-system and type-annotations to the language, which in turn can be used to type-check the code, surfacing any errors caused by wrong type usage, before the transpiled JS code ever runs in a user's browser.
 
@@ -45,6 +45,10 @@ SQLite stores all of its data in a single file,
 === Entity Framework Core
 
 ==== Migrations
+
+As StartSCH uses the code-first mode of Entity Framework, database migrations can also be managed in C\# code. Migrations have to managed separately between Postgres and SQLite.
+
+
 
 == Security
 
@@ -92,9 +96,11 @@ While Kubernetes was designed to accomodate micro-services like these, it doesn'
 
 = The Problem
 
-As a university student, a common problem I face is keeping up with all the news around the university.
+As a university student, a common problem I face is keeping up with all the news around the university and keeping track of the numerous events available to us.
 
-= The Model
+= The Implementation
+
+== The Model
 
 The core entity types of StartSCH are Events, Posts, Categories, Pages and Interests:
 
@@ -127,3 +133,62 @@ Events and Posts (together referred to as _Articles_) are owned by Pages. Pages 
 Collaborations between Pages can be represented by assigning Categories from different Pages to a single Article.
 
 As Pages do not directly contain Articles, all Pages must contain an unnamed Category representing the Page itself. This Category is assigned to Articles that do not belong to any Category.
+
+=== Interests
+
+`Interest` is a general type for anything a user might be interested in. For example a user might want to receive push notifications or emails about Posts published under a given Event or a given Category.
+
+#mermaid("
+classDiagram
+    class Interest {
+        <<abstract>>
+    }
+    User --> Interest : subscribes to
+    class EventInterest {
+        <<abstract>>
+    }
+    EventInterest --|> Interest
+    EventInterest --> Event
+    class CategoryInterest {
+        <<abstract>>
+    }
+    CategoryInterest --|> Interest
+    CategoryInterest --> Category
+    ShowEventsInCategory --|> CategoryInterest
+    ShowPostsInCategory --|> CategoryInterest
+    ShowPostsForEvent --|> EventInterest
+")
+
+Users can subscribe to interests.
+
+== Modules
+
+Modules are responsible for syncing data from external sites. Modules are designed to be decoupled from the rest of the app. This way any unneeded modules can be disabled in development, speeding up the startup of the app significantly.
+
+```cs
+public interface IModule
+{
+    static virtual string Id => throw new NotImplementedException();
+    static virtual void Register(IServiceCollection services) { }
+    void RegisterPollJobs(PollJobService pollJobService) { }
+}
+```
+
+Modules are registered into the ASP.NET dependency injection container using a custom ```cs WebApplicationBuilder.AddModule<TModule>()``` extension method. This call invokes the `Register` static virtual method, letting the module register its own services, like synchronization jobs or initalizers.
+
+The `AddModule` function also determines whether a given module is enabled by reading the app's configuration and returns without registering if the module is disabled.
+
+=== Synchronization jobs
+
+Synchronization jobs are registered by a modules in their `RegisterPollJobs` methods. The below code registers `VikBmeHuPollJob` to run every 2 hours:
+
+```cs
+public void RegisterPollJobs(PollJobService pollJobService)
+{
+    pollJobService
+        .Register<VikBmeHuPollJob>()
+        .SetInterval(TimeSpan.FromHours(2));
+}
+```
+
+Synchronization jobs implement the `IPollJobExecutor` interface containing a single ```cs Task Execute(CancellationToken cancellationToken)``` method. `PollJobService` then runs these in the background, requesting a synchronization job instance from the DI container then running it. If the job fails, the PollJobService retries it using exponential backoff, so as not to overload the other server.
