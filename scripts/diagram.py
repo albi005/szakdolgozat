@@ -401,7 +401,7 @@ def main(argv: list[str]) -> int:
     p_insert.add_argument("--anchor", help="text of the paragraph to insert after")
     p_insert.add_argument("--alt", default="", help="image alt text")
     p_insert.add_argument("--max-width", type=float, default=12.0, help="cm")
-    p_insert.add_argument("--max-height", type=float, default=18.0, help="cm")
+    p_insert.add_argument("--max-height", type=float, default=12.0, help="cm")
 
     args = parser.parse_args(argv)
 
