@@ -174,7 +174,7 @@ public interface IModule
 }
 ```
 
-Modules are registered into the ASP.NET dependency injection container using a custom `WebApplicationBuilder.AddModule<TModule>()` extension method. This call invokes the `Register` static virtual method, letting the module register its own services, like synchronization jobs or initalizers.
+Modules are registered into the ASP.NET dependency injection container using a custom ```cs WebApplicationBuilder.AddModule<TModule>()``` extension method. This call invokes the `Register` static virtual method, letting the module register its own services, like synchronization jobs or initalizers.
 
 The `AddModule` function also determines whether a given module is enabled by reading the app's configuration and returns without registering if the module is disabled.
 
@@ -191,4 +191,4 @@ public void RegisterPollJobs(PollJobService pollJobService)
 }
 ```
 
-Synchronization jobs implement the `IPollJobExecutor` interface containing a single `Task Execute(CancellationToken cancellationToken)` method. `PollJobService` then runs these in the background, requesting a synchronization job instance from the DI container then running it. If the job fails, the PollJobService retries it using exponential backoff, so as not to overload the other server.
+Synchronization jobs implement the `IPollJobExecutor` interface containing a single ```cs Task Execute(CancellationToken cancellationToken)``` method. `PollJobService` then runs these in the background, requesting a synchronization job instance from the DI container then running it. If the job fails, the PollJobService retries it using exponential backoff, so as not to overload the other server.
