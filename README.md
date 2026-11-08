@@ -20,6 +20,18 @@ nix develop
 make init        # OneDrive login (browser) + reachability check
 ```
 
+## Editing
+
+```sh
+nix develop
+make dev
+```
+
+`make dev` starts `typst watch` and `sioyek` in the background and opens
+`thesis.typ` in helix in the foreground. Save in helix and the PDF rebuilds and
+reloads; quitting helix stops both. Watcher output goes to
+`.sync/typst-watch.log` so it does not fight helix for the terminal.
+
 ## The three flows
 
 | Flow | Command | Direction |

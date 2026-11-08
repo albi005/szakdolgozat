@@ -1,4 +1,4 @@
-.PHONY: init pull pull-finish push push-finish reanchor status pdf
+.PHONY: init pull pull-finish push push-finish reanchor status pdf dev
 
 # Log in to OneDrive and verify the review document is reachable.
 init:
@@ -29,3 +29,7 @@ status:
 
 pdf:
 	bash scripts/pdf.sh
+
+# Single-terminal editing session: typst watch + sioyek + helix.
+dev:
+	bash scripts/dev.sh
