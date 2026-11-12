@@ -98,9 +98,12 @@ While Kubernetes was designed to accomodate micro-services like these, it doesn'
 
 As a university student, a common problem I face is keeping up with all the news around the university and keeping track of the numerous events available to us.
 
-= The Implementation
+= Implementation
 
-== The Model
+// Broken, will have to fix at some point
+// #mermaid(read("db-schema.mermaid"))
+
+== Model
 
 The core entity types of StartSCH are Events, Posts, Categories, Pages and Interests:
 
@@ -163,7 +166,11 @@ Users can subscribe to interests.
 
 == Modules
 
-Modules are responsible for syncing data from external sites. Modules are designed to be decoupled from the rest of the app. This way any unneeded modules can be disabled in development, speeding up the startup of the app significantly.
+Modules are responsible for syncing data from external sites, by making HTTP requests, then updating the database.
+
+Modules are designed to be decoupled from the rest of the app, allowing any unneeded modules to be disabled, decreasing server startup times significantly in development environments. Configuring enabled modules is done through ASP.NET Core's configuration system.
+
+All modules must implement the following interface. The only required member is the `Id` property, which is usually implemented by the modules using C\#'s `nameof` operator. For the other two members, `IModule` defines a default no-op implementation so that modules that don't rely on those members' functionality do not have to implement them.
 
 ```cs
 public interface IModule
@@ -178,9 +185,9 @@ Modules are registered into the ASP.NET dependency injection container using a c
 
 The `AddModule` function also determines whether a given module is enabled by reading the app's configuration and returns without registering if the module is disabled.
 
-=== Synchronization jobs
+=== Synchronization Jobs
 
-Synchronization jobs are registered by a modules in their `RegisterPollJobs` methods. The below code registers `VikBmeHuPollJob` to run every 2 hours:
+Synchronization jobs are registered by modules in their `RegisterPollJobs` methods. The below sample code registers `VikBmeHuPollJob` to run every 2 hours:
 
 ```cs
 public void RegisterPollJobs(PollJobService pollJobService)
@@ -191,4 +198,14 @@ public void RegisterPollJobs(PollJobService pollJobService)
 }
 ```
 
-Synchronization jobs implement the `IPollJobExecutor` interface containing a single ```cs Task Execute(CancellationToken cancellationToken)``` method. `PollJobService` then runs these in the background, requesting a synchronization job instance from the DI container then running it. If the job fails, the PollJobService retries it using exponential backoff, so as not to overload the other server.
+Synchronization jobs implement the `IPollJobExecutor` interface containing a single ```cs Task Execute(CancellationToken cancellationToken)``` method. The `PollJobService` then runs these in the background, requesting a synchronization job instance from the DI container, then calling the `Execute` method. If the job fails, the PollJobService retries it using exponential backoff, so as not to overload the other server.
+
+=== Implementing a Synchronization Job
+
+A synch
+
+== Background Tasks
+
+In the software development industry, message queues are used to decouple when a certain piece of work is requested from when it is actully executed. This can be utilized to spread processing load over multiple servers or to defer lower-priority work. In the development of StartSCH, the need for a message queue came up when designing the backend for push notifications.
+
+Instead of the more traditional route of relying on an external message queue like RabbitMQ, StartSCH implements its own message queue system built on its SQL database and on ASP.NET hosted services. Not relying on an external service simplifies local development, as a new developer doesn't have to spend time setting up and later on doesn't have to maintain it. Additionally, a custom implementation enables certain kinds of performance optimizations, such as batching, but only for certain kinds of messages.

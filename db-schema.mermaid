@@ -1,0 +1,268 @@
+erDiagram
+    %% Legend: entities marked "TPH subtype" are rows in the base table,
+    %% distinguished by a Discriminator column (table-per-hierarchy).
+
+    Users {
+        int Id PK
+        guid AuthSchId UK
+        Instant Created
+        Instant Updated
+        string AuthSchEmail
+        string StartSchEmail
+        bool StartSchEmailVerified
+        string PersonalCalendarConfiguration
+        bytea PersonalCalendarEncryptionKeyHash
+        int DefaultPersonalCalendarCategoryId FK
+        int DefaultPersonalCalendarExamCategoryId FK
+    }
+
+    Pages {
+        int Id PK
+        Instant Created
+        Instant Updated
+        string ExternalUrl UK
+        string Name
+        int PekId UK
+        string PekName UK
+        int PincerId UK
+        string PincerName UK
+    }
+
+    Categories {
+        int Id PK
+        int PageId FK
+        string Name
+        string ExternalUrl
+        int ExternalIdInt
+    }
+
+    CategoryIncludes {
+        int IncludedId PK, FK
+        int IncluderId PK, FK
+    }
+
+    Events {
+        int Id PK
+        int ParentId FK
+        Instant Created
+        Instant Updated
+        Instant Start
+        Instant End
+        bool AllDay
+        string Title
+        string DescriptionMarkdown
+        string ExternalUrl
+        int ExternalIdInt
+        int PersonalCalendarCategoryId FK
+        string Discriminator
+    }
+
+    PincerOpenings {
+        int Id PK, FK "Events.Id, Discriminator=PincerOpening"
+        int PincerId UK
+        Instant OrderingStart
+        Instant OrderingEnd
+        Instant OutOfStock
+    }
+
+    Posts {
+        int Id PK
+        int EventId FK
+        Instant Created
+        Instant Updated
+        Instant Published
+        string Title
+        string ExcerptMarkdown
+        string ContentMarkdown
+        string ExternalUrl
+        int ExternalIdInt
+    }
+
+    EventCategory {
+        int CategoryId PK, FK
+        int EventId PK, FK
+    }
+
+    PostCategory {
+        int CategoryId PK, FK
+        int PostId PK, FK
+    }
+
+    PersonalCalendars {
+        int Id PK
+        int UserId FK
+        string Name
+        string Discriminator
+    }
+
+    ExternalPersonalCalendars {
+        int Id PK, FK "PersonalCalendars.Id"
+        bytea AesNonce
+        bytea AesEncryptedUrl
+        bytea AesTag
+    }
+
+    PersonalMoodleCalendars {
+        int Id PK, FK "ExternalPersonalCalendars.Id"
+    }
+
+    PersonalNeptunCalendars {
+        int Id PK, FK "ExternalPersonalCalendars.Id"
+    }
+
+    PersonalCalendarCategories {
+        int Id PK, FK "PersonalCalendars.Id"
+        uint Color
+    }
+
+    Interests {
+        int Id PK
+        string Discriminator
+    }
+
+    CategoryInterests {
+        int Id PK, FK "Interests.Id"
+        int CategoryId FK
+    }
+
+    EventInterests {
+        int Id PK, FK "Interests.Id"
+        int EventId FK
+    }
+
+    InterestSubscriptions {
+        int InterestId PK, FK
+        int UserId PK, FK
+    }
+
+    PushSubscriptions {
+        int Id PK
+        int UserId FK
+        string Endpoint UK
+        string P256DH
+        string Auth
+    }
+
+    BackgroundTasks {
+        int Id PK
+        Instant Created
+        Instant WaitUntil
+        string Discriminator
+    }
+
+    SendEmails {
+        int Id PK, FK "BackgroundTasks.Id"
+        int UserId FK
+        int MessageId FK
+    }
+
+    SendPushNotifications {
+        int Id PK, FK "BackgroundTasks.Id"
+        int UserId FK
+        int MessageId FK
+    }
+
+    CreateOrderingStartedNotifications {
+        int Id PK, FK "BackgroundTasks.Id"
+        int PincerOpeningId FK, UK
+    }
+
+    CreatePostPublishedNotifications {
+        int Id PK, FK "BackgroundTasks.Id"
+        int PostId FK
+    }
+
+    EmailMessages {
+        int Id PK
+        string FromName
+        string FromEmail
+        string Subject
+        string ContentHtml
+    }
+
+    PushNotificationMessages {
+        int Id PK
+        string Payload
+        string Topic
+        int Urgency
+        Instant ValidUntil
+    }
+
+    CollaborationRequests {
+        int Id PK
+        int PageId FK
+        string Discriminator
+    }
+
+    EventCollaborationRequests {
+        int Id PK, FK "CollaborationRequests.Id"
+        int EventId FK
+    }
+
+    PostCollaborationRequests {
+        int Id PK, FK "CollaborationRequests.Id"
+        int PostId FK
+    }
+
+    CachedIcsResponses {
+        int Id PK
+        bytea UrlHash UK
+        Instant UpdatedAt
+        bytea Data
+        bytea Nonce
+        bytea Tag
+    }
+
+    DataProtectionKeys {
+        int Id PK
+        string FriendlyName
+        string Xml
+    }
+
+    Pages ||--o{ Categories : "PageId"
+    Categories ||--o{ CategoryIncludes : "IncluderId"
+    Categories ||--o{ CategoryIncludes : "IncludedId"
+
+    Categories ||--o{ EventCategory : "CategoryId"
+    Events ||--o{ EventCategory : "EventId"
+    Categories ||--o{ PostCategory : "CategoryId"
+    Posts ||--o{ PostCategory : "PostId"
+
+    Events ||--o{ Posts : "EventId"
+    Events ||--o{ Events : "ParentId"
+    Events }o--o| PersonalCalendarCategories : "PersonalCalendarCategoryId"
+
+    Users ||--o{ PersonalCalendars : "UserId"
+    PersonalCalendars ||--|| PersonalCalendarCategories : "TPH subtype"
+    PersonalCalendars ||--|| ExternalPersonalCalendars : "TPH subtype"
+    ExternalPersonalCalendars ||--|| PersonalMoodleCalendars : "TPH subtype"
+    ExternalPersonalCalendars ||--|| PersonalNeptunCalendars : "TPH subtype"
+    Users }o--o| PersonalCalendarCategories : "DefaultPersonalCalendarCategoryId"
+    Users }o--o| PersonalCalendarCategories : "DefaultPersonalCalendarExamCategoryId"
+
+    Interests ||--|| CategoryInterests : "TPH subtype"
+    Interests ||--|| EventInterests : "TPH subtype"
+    CategoryInterests }o--|| Categories : "CategoryId"
+    EventInterests }o--|| Events : "EventId"
+    Users ||--o{ InterestSubscriptions : "UserId"
+    Interests ||--o{ InterestSubscriptions : "InterestId"
+
+    Users ||--o{ PushSubscriptions : "UserId"
+
+    BackgroundTasks ||--|| SendEmails : "TPH subtype"
+    BackgroundTasks ||--|| SendPushNotifications : "TPH subtype"
+    BackgroundTasks ||--|| CreateOrderingStartedNotifications : "TPH subtype"
+    BackgroundTasks ||--|| CreatePostPublishedNotifications : "TPH subtype"
+    Users ||--o{ SendEmails : "UserId"
+    EmailMessages ||--o{ SendEmails : "MessageId"
+    Users ||--o{ SendPushNotifications : "UserId"
+    PushNotificationMessages ||--o{ SendPushNotifications : "MessageId"
+    CreateOrderingStartedNotifications }o--|| PincerOpenings : "PincerOpeningId"
+    CreatePostPublishedNotifications }o--|| Posts : "PostId"
+
+    CollaborationRequests }o--|| Pages : "PageId"
+    CollaborationRequests ||--|| EventCollaborationRequests : "TPH subtype"
+    CollaborationRequests ||--|| PostCollaborationRequests : "TPH subtype"
+    EventCollaborationRequests }o--|| Events : "EventId"
+    PostCollaborationRequests }o--|| Posts : "PostId"
+

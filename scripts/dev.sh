@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# Single-terminal editing session: typst watch + sioyek + helix.
+# Editing session: helix here, typst watch in its own terminal window, sioyek
+# alongside. The watcher window can be moved to another Hyprland workspace.
 #
 #   make dev
-#
-# Starts the watcher and the reader in the background, then runs helix in the
-# foreground. Quitting helix stops both.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -17,33 +15,53 @@ for tool in typst hx sioyek; do
   fi
 done
 
-LOG="$ROOT/.sync/typst-watch.log"
-mkdir -p "$ROOT/.sync"
+# The reader needs a PDF to open; build once on a fresh checkout before the
+# watcher takes over. sioyek reloads the file on its own afterwards.
+if [[ ! -f thesis.pdf ]]; then
+  typst compile thesis.typ thesis.pdf
+fi
 
-watch_pid=""
-reader_pid=""
+READER_PID=""
+WATCH_PID=""
 
 cleanup() {
   trap - EXIT INT TERM
-  [[ -n "$watch_pid" ]] && kill "$watch_pid" 2>/dev/null || true
-  [[ -n "$reader_pid" ]] && kill "$reader_pid" 2>/dev/null || true
+  # The watcher terminal owns the typst process; closing it stops the watch.
+  [[ -n "$WATCH_PID" ]] && kill "$WATCH_PID" 2>/dev/null || true
+  [[ -n "$READER_PID" ]] && kill "$READER_PID" 2>/dev/null || true
   wait 2>/dev/null || true
-  echo "Stopped typst watch and sioyek."
 }
 trap cleanup EXIT INT TERM
 
-# Compiler output goes to a file: a background writer on the tty would fight
-# helix for the alternate screen. Tail it with: tail -f .sync/typst-watch.log
-typst watch thesis.typ thesis.pdf >"$LOG" 2>&1 &
-watch_pid=$!
-
-# Open the reader only once a PDF exists (fresh checkout, first compile).
-for _ in $(seq 1 200); do
-  if [[ -f thesis.pdf ]]; then break; fi
-  sleep 0.1
-done
+# typst watch in a terminal window of its own, titled so it is easy to spot in
+# the Hyprland window list. Window class "typst-watch" is set for a window rule.
+TERM_BIN="${TERMINAL:-alacritty}"
+if command -v "$TERM_BIN" >/dev/null 2>&1; then
+  case "$(basename "$TERM_BIN")" in
+  kitty)
+    "$TERM_BIN" --title "typst watch" --class typst-watch typst watch thesis.typ thesis.pdf &
+    ;;
+  foot)
+    "$TERM_BIN" -T "typst watch" -a typst-watch -e typst watch thesis.typ thesis.pdf &
+    ;;
+  wezterm)
+    "$TERM_BIN" start --class typst-watch -- typst watch thesis.typ thesis.pdf &
+    ;;
+  *)
+    "$TERM_BIN" --title "typst watch" --class typst-watch -e typst watch thesis.typ thesis.pdf &
+    ;;
+  esac
+  WATCH_PID=$!
+else
+  # No terminal emulator: keep the watcher out of the way in a log file.
+  LOG="$ROOT/.sync/typst-watch.log"
+  mkdir -p "$ROOT/.sync"
+  echo "No terminal emulator (\$TERMINAL=$TERM_BIN); logging to $LOG" >&2
+  typst watch thesis.typ thesis.pdf >"$LOG" 2>&1 &
+  WATCH_PID=$!
+fi
 
 sioyek thesis.pdf >/dev/null 2>&1 &
-reader_pid=$!
+READER_PID=$!
 
 hx thesis.typ

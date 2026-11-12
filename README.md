@@ -27,10 +27,13 @@ nix develop
 make dev
 ```
 
-`make dev` starts `typst watch` and `sioyek` in the background and opens
-`thesis.typ` in helix in the foreground. Save in helix and the PDF rebuilds and
-reloads; quitting helix stops both. Watcher output goes to
-`.sync/typst-watch.log` so it does not fight helix for the terminal.
+`make dev` opens helix with `thesis.typ` here, `typst watch` in a new terminal
+window (title `typst watch`, window class `typst-watch`), and sioyek in the
+background. The watcher window is a normal window, so you can park it on
+another Hyprland workspace. Save and the PDF rebuilds and reloads; the watcher
+window shows the full Typst errors. Quitting helix closes the watcher window
+and the reader. It uses `$TERMINAL` (falling back to alacritty); with no
+terminal emulator it logs to `.sync/typst-watch.log` instead.
 
 ## The three flows
 
