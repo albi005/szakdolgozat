@@ -58,7 +58,7 @@ For authentication, StartSCH relies on an OpenID Connect Identity Provider calle
 
 == Production Deployment: Kubernetes
 
-The production version of StartSCH is deployed using Kubernetes.
+The production version of StartSCH is deployed using Kubernetes. Below I'll explain why it was necessary and how StartSCH utilizes it to improve the developer experience, monitoring and reliability.
 
 === Metrics, Logs and Traces: OpenTelemetry
 
@@ -206,6 +206,20 @@ A synch
 
 == Background Tasks
 
-In the software development industry, message queues are used to decouple when a certain piece of work is requested from when it is actully executed. This can be utilized to spread processing load over multiple servers or to defer lower-priority work. In the development of StartSCH, the need for a message queue came up when designing the backend for push notifications.
+In the software development industry, message queues are used to decouple when a certain piece of work is requested from when it is actully executed. This can be utilized to spread processing load over multiple servers or to defer lower-priority work.
 
-Instead of the more traditional route of relying on an external message queue like RabbitMQ, StartSCH implements its own message queue system built on its SQL database and on ASP.NET hosted services. Not relying on an external service simplifies local development, as a new developer doesn't have to spend time setting up and later on doesn't have to maintain it. Additionally, a custom implementation enables certain kinds of performance optimizations, such as batching, but only for certain kinds of messages.
+In the development of StartSCH, the need for a message queue came up when designing the backend for push notifications: a user executes an action, which in turn triggers notifications. All operations in ASP.NET usually happen in async functions, which exit once a response has been sent. Instead of sending notifications in the request processing pipeline, notifications are first persisted to the database and then a message queue thread handles the message.
+
+Another reason a message queue is crucial is ensuring atomicity for all operations in notification sending. As sending notifications requires interacting with external services, if all operations ran in the same context, a single failing notification would leave notifications in an inconsistent state: we can either retry all notifications and risk sending duplicates or stop the operation altogether and risk certain users not receiving the notification. I solved this by breaking up notifications into smaller, nearly atomic operations, which get stored in the database and can be retried if they fail.
+
+As a single user request can trigger thousands of notifications, instead of creating all atomic notifications in the request's pipeline, creating these messages is also delegated to the message queue: the request handling pipeline creates a request for notifications, which the message queue then turns into the individual notifications in a single database transaction. This speeds up responding to the user and also enables retrying the operation if it fails.
+
+Instead of the more traditional route of relying on an external message queue like RabbitMQ, StartSCH implements its own message queue system built on its SQL database and ASP.NET hosted services. Not relying on an external service simplifies local development, as a new developer doesn't have to spend time setting up and later on doesn't have to maintain it. Additionally, a custom implementation enables certain kinds of performance optimizations, such as batching certain messages, which in turn enables relaying emails to the email service in batches.
+
+=== Background Task Implementation
+
+
+
+Background tasks are stored in the database as an implementation of the `BackgroundTask` abstract class using Entity Framework's table-per-hierarchy mapping [https://learn.microsoft.com/en-us/ef/core/modeling/inheritance#table-per-hierarchy-and-discriminator-configuration]: all background tasks are stored in the same database table, with the `Discriminator` column telling EF which concrete type a given row represents. The `BackgroundTaskManager` service then queries this table and sends the tasks to a handler.
+
+Hanlers
