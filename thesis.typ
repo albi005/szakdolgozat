@@ -218,8 +218,6 @@ Instead of the more traditional route of relying on an external message queue li
 
 === Background Task Implementation
 
+Background tasks are stored in the database as an implementation of the `BackgroundTask` abstract class using Entity Framework's table-per-hierarchy mapping [https://learn.microsoft.com/en-us/ef/core/modeling/inheritance#table-per-hierarchy-and-discriminator-configuration]: all background tasks are stored in the same database table, with the `Discriminator` column telling EF which concrete type a given row represents. The `BackgroundTaskManager` service then queries this table in a loop and sends the tasks to handlers.
 
-
-Background tasks are stored in the database as an implementation of the `BackgroundTask` abstract class using Entity Framework's table-per-hierarchy mapping [https://learn.microsoft.com/en-us/ef/core/modeling/inheritance#table-per-hierarchy-and-discriminator-configuration]: all background tasks are stored in the same database table, with the `Discriminator` column telling EF which concrete type a given row represents. The `BackgroundTaskManager` service then queries this table and sends the tasks to a handler.
-
-Hanlers
+Handlers 
